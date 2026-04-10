@@ -1,0 +1,544 @@
+Name      NetISA_RevA;
+PartNo    01;
+Date      2026-04-07;
+Revision  01;
+Designer  Tony Atkins;
+Company   NetISA Project;
+Assembly  Phase 0 Prototype;
+Location  U1;
+Device    f1508isptqfp100;
+
+/*********************************************************************
+ * NetISA Rev A - ATF1508AS CPLD Logic
+ * 
+ * ISA crypto/transport coprocessor bus interface.
+ * Implements: address decode, data path, IOCHRDY wait-state controller,
+ *             IRQ state machine, parallel bridge to ESP32-S3, register cache.
+ *
+ * Design principles (post red-team):
+ *   - Separate ISA and ESP32 data paths (no bus multiplex)
+ *   - 2-flop synchronizers on all async ESP32 signals
+ *   - Fully registered IOCHRDY assert/release
+ *   - Status flag (XFER_TIMEOUT) on watchdog expiry instead of in-band error byte
+ *   - Proper IRQ state machine for XT edge + AT level PICs
+ *
+ * Target: Microchip ATF1508AS-10AU100 (TQFP-100, 128 MC, 5V, 10ns)
+ *
+ * WARNING: Pin assignments below are for the OBSOLETE PLCC-84 package.
+ * If using this CUPL file with WinCUPL, all pin numbers must be remapped
+ * to TQFP-100 pinout from the ATF1508AS datasheet before compilation.
+ * The recommended path is the Verilog file (netisa.v) with Quartus II.
+ *
+ * Clock:  16 MHz external oscillator on GCLK1
+ *********************************************************************/
+
+PROPERTY ATMEL {JTAG=ON};
+PROPERTY ATMEL {TDI_PULLUP=ON};
+PROPERTY ATMEL {TMS_PULLUP=ON};
+PROPERTY ATMEL {preassign=keep};
+
+/*=====================================================================
+ * PIN ASSIGNMENTS
+ *
+ * ATF1508AS PLCC-84: 64 I/O pins available.
+ * Using 48 of 64, leaving 16 spare for test points / future.
+ *
+ * Pin numbers below are for PLCC-84 package.
+ * GCLK1=83, GCLK2=2, OE1=84, OE2=1
+ * JTAG: TDI=7, TMS=14, TCK=26, TDO=38
+ *=====================================================================*/
+
+/* === Clocks === */
+PIN 83 = CLK;           /* GCLK1: 16 MHz oscillator */
+/* GCLK2 (pin 2) available for BCLK if needed later */
+
+/* === ISA Bus: Address Lines (Active Low where noted) === */
+PIN  4 = A0;
+PIN  5 = A1;
+PIN  6 = A2;
+PIN  9 = A3;
+PIN 11 = A4;
+PIN 12 = A5;
+PIN 13 = A6;
+PIN 15 = A7;
+PIN 16 = A8;
+PIN 17 = A9;
+
+/* === ISA Bus: Data Lines (Dedicated ISA-side, bidirectional) === */
+PIN 18 = D0;
+PIN 19 = D1;
+PIN 21 = D2;
+PIN 23 = D3;
+PIN 24 = D4;
+PIN 25 = D5;
+PIN 27 = D6;
+PIN 28 = D7;
+
+/* === ISA Bus: Control Signals === */
+PIN 29 = !AEN;          /* Address Enable: active LOW = CPU cycle */
+PIN 30 = !IOR;          /* I/O Read strobe: active LOW */
+PIN 31 = !IOW;          /* I/O Write strobe: active LOW */
+PIN 33 = IOCHRDY;       /* I/O Channel Ready: drive LOW to wait */
+PIN 35 = !RESET;        /* System Reset: active LOW (after RC filter) */
+PIN 36 = IRQ_OUT;       /* Selected IRQ line (active HIGH) */
+PIN 37 = !IOCS16;       /* 16-bit I/O: active LOW */
+
+/* === ESP32 Parallel Bus: Data (Dedicated ESP32-side) === */
+PIN 39 = PD0;
+PIN 40 = PD1;
+PIN 41 = PD2;
+PIN 42 = PD3;
+PIN 43 = PD4;
+PIN 45 = PD5;
+PIN 46 = PD6;
+PIN 47 = PD7;
+
+/* === ESP32 Parallel Bus: Control === */
+PIN 49 = PA0;           /* Register address bit 0 (CPLD -> ESP32) */
+PIN 50 = PA1;           /* Register address bit 1 */
+PIN 51 = PA2;           /* Register address bit 2 */
+PIN 52 = PA3;           /* Register address bit 3 */
+PIN 53 = PRW;           /* Read/Write: 0=write-to-ESP32, 1=read-from-ESP32 */
+PIN 54 = PSTROBE;       /* Data strobe: active LOW pulse (CPLD -> ESP32) */
+PIN 55 = PREADY;        /* Data valid from ESP32 (ESP32 -> CPLD) */
+PIN 57 = PIRQ;          /* Interrupt request from ESP32 (ESP32 -> CPLD) */
+PIN 58 = PBOOT;         /* Boot complete flag (ESP32 -> CPLD) */
+
+/* === Configuration Inputs === */
+PIN 59 = ADDR_J0;       /* DIP switch bit 0 (base address) */
+PIN 61 = ADDR_J1;       /* DIP switch bit 1 */
+PIN 62 = ADDR_J2;       /* DIP switch bit 2 */
+PIN 63 = SAFE_MODE;     /* Safe mode jumper: HIGH = safe mode */
+PIN 64 = IRQ_SENSE;     /* IRQ jumper sense (active HIGH = IRQ enabled) */
+PIN 65 = SLOT16;        /* 16-bit slot detect: LOW = 16-bit slot */
+
+/* === Spare / Test Points === */
+PIN 66 = TP0;           /* Test point: directly active signal TBD */
+PIN 67 = TP1;           /* Test point */
+
+/*=====================================================================
+ * FIELD DEFINITIONS
+ *=====================================================================*/
+
+FIELD isa_addr  = [A9..A0];
+FIELD isa_data  = [D7..D0];
+FIELD esp_data  = [PD7..PD0];
+FIELD reg_addr  = [PA3..PA0];
+FIELD addr_jump = [ADDR_J2..ADDR_J0];
+
+/*=====================================================================
+ * INTERNAL NODES (registered)
+ *=====================================================================*/
+
+/* --- 2-Flop Synchronizers (6 macrocells) --- */
+PINNODE = pready_meta;
+PINNODE = pready_sync;
+PINNODE = pirq_meta;
+PINNODE = pirq_sync;
+PINNODE = pboot_meta;
+PINNODE = pboot_sync;
+
+/* --- Data Latches (16 macrocells) --- */
+PINNODE = isa_in_latch0;     /* ISA write data latch (host -> card) */
+PINNODE = isa_in_latch1;
+PINNODE = isa_in_latch2;
+PINNODE = isa_in_latch3;
+PINNODE = isa_in_latch4;
+PINNODE = isa_in_latch5;
+PINNODE = isa_in_latch6;
+PINNODE = isa_in_latch7;
+
+PINNODE = isa_out_latch0;    /* ISA read data latch (card -> host, cached) */
+PINNODE = isa_out_latch1;
+PINNODE = isa_out_latch2;
+PINNODE = isa_out_latch3;
+PINNODE = isa_out_latch4;
+PINNODE = isa_out_latch5;
+PINNODE = isa_out_latch6;
+PINNODE = isa_out_latch7;
+
+FIELD isa_in_latch  = [isa_in_latch7..isa_in_latch0];
+FIELD isa_out_latch = [isa_out_latch7..isa_out_latch0];
+
+/* --- IOCHRDY Controller (10 macrocells) --- */
+PINNODE = iochrdy_hold;
+PINNODE = wdog0;
+PINNODE = wdog1;
+PINNODE = wdog2;
+PINNODE = wdog3;
+PINNODE = wdog4;
+PINNODE = wdog5;
+PINNODE = wdog6;
+PINNODE = wdog7;
+PINNODE = read_pending;      /* A non-cached read is in progress */
+
+FIELD watchdog = [wdog7..wdog0];
+
+/* --- IRQ State Machine (4 macrocells) --- */
+PINNODE = irq_state0;
+PINNODE = irq_state1;
+PINNODE = irq_dead0;         /* Dead-time counter bit 0 */
+PINNODE = irq_dead1;         /* Dead-time counter bit 1 */
+
+/* --- Strobe Generator (2 macrocells) --- */
+PINNODE = strobe_req;
+PINNODE = strobe_phase;
+
+/* --- IOW Edge Detector (1 macrocell) --- */
+PINNODE = iow_prev;
+
+/*=====================================================================
+ * ADDRESS DECODE (combinational)
+ *
+ * Match A9-A4 against jumper-selected base address.
+ * A3-A0 select the register within the 16-port window.
+ *
+ * IMPORTANT: Compare 6 bits (A9-A4), NOT 7 bits (A9-A3).
+ * The register map has 16 registers (0x00-0x0F) requiring 4 address
+ * bits (A3-A0). If A3 were included in chip select, only registers
+ * 0x00-0x07 would be accessible (A3=0 half). Registers 0x08-0x0F
+ * (firmware version, session count, network status) would be invisible.
+ *
+ * Verified address patterns (A9..A4, 6 bits):
+ *   0x280 = 0b10_1000_xxxx -> A9=1 A8=0 A7=1 A6=0 A5=0 A4=0
+ *   0x290 = 0b10_1001_xxxx -> A9=1 A8=0 A7=1 A6=0 A5=0 A4=1
+ *   0x2A0 = 0b10_1010_xxxx -> A9=1 A8=0 A7=1 A6=0 A5=1 A4=0
+ *   0x2C0 = 0b10_1100_xxxx -> A9=1 A8=0 A7=1 A6=1 A5=0 A4=0
+ *   0x300 = 0b11_0000_xxxx -> A9=1 A8=1 A7=0 A6=0 A5=0 A4=0
+ *   0x310 = 0b11_0001_xxxx -> A9=1 A8=1 A7=0 A6=0 A5=0 A4=1
+ *   0x320 = 0b11_0010_xxxx -> A9=1 A8=1 A7=0 A6=0 A5=1 A4=0
+ *   0x340 = 0b11_0100_xxxx -> A9=1 A8=1 A7=0 A6=1 A5=0 A4=0
+ *=====================================================================*/
+
+base_match = 
+    (addr_jump == 'b'000 & A9 & !A8 &  A7 & !A6 & !A5 & !A4) /* 0x280 */
+  # (addr_jump == 'b'001 & A9 & !A8 &  A7 & !A6 & !A5 &  A4) /* 0x290 */
+  # (addr_jump == 'b'010 & A9 & !A8 &  A7 & !A6 &  A5 & !A4) /* 0x2A0 */
+  # (addr_jump == 'b'011 & A9 & !A8 &  A7 &  A6 & !A5 & !A4) /* 0x2C0 */
+  # (addr_jump == 'b'100 & A9 &  A8 & !A7 & !A6 & !A5 & !A4) /* 0x300 */
+  # (addr_jump == 'b'101 & A9 &  A8 & !A7 & !A6 & !A5 &  A4) /* 0x310 */
+  # (addr_jump == 'b'110 & A9 &  A8 & !A7 & !A6 &  A5 & !A4) /* 0x320 */
+  # (addr_jump == 'b'111 & A9 &  A8 & !A7 &  A6 & !A5 & !A4); /* 0x340 */
+
+/* Chip select: address match AND CPU cycle (AEN low via active-low pin) */
+chip_sel = base_match & AEN;
+
+/* Register offset from A0-A3 */
+is_reg00 = chip_sel & !A3 & !A2 & !A1 & !A0;  /* 0x00: Status/Command */
+is_reg01 = chip_sel & !A3 & !A2 & !A1 &  A0;  /* 0x01: Resp/Cmd Len Lo */
+is_reg02 = chip_sel & !A3 & !A2 &  A1 & !A0;  /* 0x02: Resp/Cmd Len Hi */
+is_reg04 = chip_sel & !A3 &  A2 & !A1 & !A0;  /* 0x04: Data In/Out */
+is_reg05 = chip_sel & !A3 &  A2 & !A1 &  A0;  /* 0x05: Data Hi (16-bit) */
+is_reg06 = chip_sel & !A3 &  A2 &  A1 & !A0;  /* 0x06: Error Code */
+is_reg07 = chip_sel & !A3 &  A2 &  A1 &  A0;  /* 0x07: FW Major / Reset */
+is_reg08 = chip_sel &  A3 & !A2 & !A1 & !A0;  /* 0x08: FW Minor */
+is_reg09 = chip_sel &  A3 & !A2 & !A1 &  A0;  /* 0x09: FW Patch */
+is_reg0A = chip_sel &  A3 & !A2 &  A1 & !A0;  /* 0x0A: Session Count */
+is_reg0B = chip_sel &  A3 & !A2 &  A1 &  A0;  /* 0x0B: Session Capacity */
+is_reg0C = chip_sel &  A3 &  A2 & !A1 & !A0;  /* 0x0C: Network Status */
+is_reg0D = chip_sel &  A3 &  A2 & !A1 &  A0;  /* 0x0D: Signal Quality */
+
+/* Cache hit: these registers are served from CPLD latches, zero wait */
+cache_hit = is_reg00 # is_reg06 # is_reg07 # is_reg08 # is_reg09
+          # is_reg0A # is_reg0B # is_reg0C;
+
+/* Non-cached: these require ESP32 response, insert wait states */
+cache_miss_read = chip_sel & IOR & !cache_hit;
+
+/* Status register read = IRQ acknowledge */
+irq_ack = is_reg00 & IOR;
+
+/*=====================================================================
+ * 2-FLOP SYNCHRONIZERS (clocked by 16 MHz)
+ *=====================================================================*/
+
+pready_meta.d = PREADY;
+pready_sync.d = pready_meta;
+
+pirq_meta.d = PIRQ;
+pirq_sync.d = pirq_meta;
+
+pboot_meta.d = PBOOT;
+pboot_sync.d = pboot_meta;
+
+/*=====================================================================
+ * ISA WRITE DATA LATCH (clocked by 16 MHz global clock)
+ *
+ * Capture D0-D7 when an ISA write completes to our address range.
+ * Uses global clock with IOW edge detection since IOW is not on a GCLK pin.
+ * Data is held until the ESP32 reads it via the parallel bus.
+ *=====================================================================*/
+
+/* IOW edge detect: sample IOW on global clock, detect rising edge (end of write) */
+PINNODE = iow_prev;
+iow_prev.d = IOW;
+iow_rising = IOW & !iow_prev;
+write_strobe = iow_rising & chip_sel;
+
+/* Latch ISA data on write strobe, otherwise hold previous value */
+isa_in_latch0.d = (write_strobe & D0) # (!write_strobe & isa_in_latch0);
+isa_in_latch1.d = (write_strobe & D1) # (!write_strobe & isa_in_latch1);
+isa_in_latch2.d = (write_strobe & D2) # (!write_strobe & isa_in_latch2);
+isa_in_latch3.d = (write_strobe & D3) # (!write_strobe & isa_in_latch3);
+isa_in_latch4.d = (write_strobe & D4) # (!write_strobe & isa_in_latch4);
+isa_in_latch5.d = (write_strobe & D5) # (!write_strobe & isa_in_latch5);
+isa_in_latch6.d = (write_strobe & D6) # (!write_strobe & isa_in_latch6);
+isa_in_latch7.d = (write_strobe & D7) # (!write_strobe & isa_in_latch7);
+
+/*=====================================================================
+ * ISA READ OUTPUT - Drive D0-D7 during reads
+ *
+ * For cached reads: output latch drives immediately.
+ * For non-cached reads: output latch is loaded when pready_sync fires.
+ * On timeout: latch is NOT modified. XFER_TIMEOUT flag is set instead.
+ * Output enable: only during our read cycles.
+ *=====================================================================*/
+
+/* Drive ISA data bus only when chip selected and IOR active */
+D0.oe = chip_sel & IOR;
+D1.oe = chip_sel & IOR;
+D2.oe = chip_sel & IOR;
+D3.oe = chip_sel & IOR;
+D4.oe = chip_sel & IOR;
+D5.oe = chip_sel & IOR;
+D6.oe = chip_sel & IOR;
+D7.oe = chip_sel & IOR;
+
+/* Output data from cached latch */
+D0 = isa_out_latch0;
+D1 = isa_out_latch1;
+D2 = isa_out_latch2;
+D3 = isa_out_latch3;
+D4 = isa_out_latch4;
+D5 = isa_out_latch5;
+D6 = isa_out_latch6;
+D7 = isa_out_latch7;
+
+/*=====================================================================
+ * ISA OUTPUT LATCH LOADING (clocked by 16 MHz)
+ *
+ * Two sources can load this latch:
+ *   1. ESP32 cache push: when ESP32 proactively updates a cached register
+ *      (PSTROBE pulse with PRW=0 from ESP32 side, detected via strobe logic)
+ *   2. Non-cached read response: when pready_sync goes high during a 
+ *      pending read (data from PD0-PD7)
+ *
+ * On watchdog timeout: latch is NOT modified (holds last value).
+ * Instead, XFER_TIMEOUT flag is set in Status Register (bit 5).
+ * This prevents in-band error signaling that would corrupt bulk data.
+ *=====================================================================*/
+
+/* Watchdog timeout: counter reached 160 (0xA0) */
+wdog_timeout = wdog7 & !wdog6 & wdog5 & !wdog4 
+             & !wdog3 & !wdog2 & !wdog1 & !wdog0
+             & iochrdy_hold;
+
+/* Load from ESP32 parallel data on successful read response */
+esp_data_valid = read_pending & pready_sync;
+
+/* XFER_TIMEOUT flag: set on watchdog timeout, cleared by host writing 0x20 to cmd reg */
+PINNODE = xfer_timeout;
+xfer_timeout.d = wdog_timeout                       /* Set on timeout */
+               # (xfer_timeout & !cmd_clear_xfer);  /* Hold until cleared */
+xfer_timeout.ar = RESET;
+
+/* Host clears XFER_TIMEOUT by writing 0x20 to command register (base+0x00) */
+cmd_clear_xfer = write_strobe & is_reg00 & D5 & !D7 & !D6 & !D4 & !D3 & !D2 & !D1 & !D0;
+
+/* Output latch: load from ESP32 data or hold. Never load error codes. */
+isa_out_latch0.d = (esp_data_valid & PD0)
+                 # (!esp_data_valid & isa_out_latch0);
+isa_out_latch1.d = (esp_data_valid & PD1)
+                 # (!esp_data_valid & isa_out_latch1);
+isa_out_latch2.d = (esp_data_valid & PD2)
+                 # (!esp_data_valid & isa_out_latch2);
+isa_out_latch3.d = (esp_data_valid & PD3)
+                 # (!esp_data_valid & isa_out_latch3);
+isa_out_latch4.d = (esp_data_valid & PD4)
+                 # (!esp_data_valid & isa_out_latch4);
+isa_out_latch5.d = (esp_data_valid & PD5)
+                 # (!esp_data_valid & isa_out_latch5);
+isa_out_latch6.d = (esp_data_valid & PD6)
+                 # (!esp_data_valid & isa_out_latch6);
+isa_out_latch7.d = (esp_data_valid & PD7)
+                 # (!esp_data_valid & isa_out_latch7);
+
+/* Status register bit 5 reflects xfer_timeout flag for cached reads */
+/* TODO (MUST FIX BEFORE PHASE 2): The xfer_timeout flag is currently a dead
+ * node. It is set/cleared correctly but never merged into the ISA output.
+ * When host reads port 0x00 (Status Register), it reads isa_out_latch which
+ * only contains ESP32-pushed data. To make bit 5 visible, the D0-D7 output
+ * path must OR in hardware flags when is_reg00 & IOR is active:
+ *   D5 = (is_reg00 & IOR) ? (isa_out_latch5 | xfer_timeout) : isa_out_latch5
+ *   D3 = (is_reg00 & IOR) ? (isa_out_latch3 | SAFE_MODE)    : isa_out_latch3
+ *   D6 = (is_reg00 & IOR) ? (isa_out_latch6 | pboot_sync)   : isa_out_latch6
+ * This adds ~3 macrocells. Not needed for Phase 0 (loopback only).
+ * REQUIRED for Phase 2+ (bulk transfer error detection depends on bit 5).
+ */
+
+/*=====================================================================
+ * IOCHRDY WAIT STATE CONTROLLER (clocked by 16 MHz)
+ *
+ * Assert IOCHRDY low on non-cached read miss.
+ * Release when: (a) pready_sync seen, or (b) watchdog expires.
+ * Both release paths are REGISTERED (synchronous to CLK).
+ *=====================================================================*/
+
+/* read_pending: set on cache miss read, cleared on data valid or timeout */
+read_pending.d = (cache_miss_read & !read_pending)   /* new miss */
+               # (read_pending & !esp_data_valid & !wdog_timeout);  /* still waiting */
+
+/* iochrdy_hold: mirrors read_pending but is the actual output driver */
+iochrdy_hold.d = read_pending.d;
+
+/* Watchdog counter: counts 16 MHz ticks while read is pending */
+wdog0.d = read_pending & !wdog_timeout & !wdog0;
+wdog1.d = read_pending & !wdog_timeout & (wdog1 $ wdog0);
+wdog2.d = read_pending & !wdog_timeout & (wdog2 $ (wdog1 & wdog0));
+wdog3.d = read_pending & !wdog_timeout & (wdog3 $ (wdog2 & wdog1 & wdog0));
+wdog4.d = read_pending & !wdog_timeout & (wdog4 $ (wdog3 & wdog2 & wdog1 & wdog0));
+wdog5.d = read_pending & !wdog_timeout & (wdog5 $ (wdog4 & wdog3 & wdog2 & wdog1 & wdog0));
+wdog6.d = read_pending & !wdog_timeout & (wdog6 $ (wdog5 & wdog4 & wdog3 & wdog2 & wdog1 & wdog0));
+wdog7.d = read_pending & !wdog_timeout & (wdog7 $ (wdog6 & wdog5 & wdog4 & wdog3 & wdog2 & wdog1 & wdog0));
+
+/* IOCHRDY output: open-drain style. Drive LOW when holding, else tri-state. */
+IOCHRDY = !iochrdy_hold;  /* Active LOW = wait */
+IOCHRDY.oe = iochrdy_hold;  /* Only drive when asserting wait */
+
+/*=====================================================================
+ * IRQ STATE MACHINE (clocked by 16 MHz)
+ *
+ * States:
+ *   00 = IDLE         : no interrupt pending
+ *   01 = PENDING      : assert IRQ line high
+ *   10 = PRESENTED    : waiting for host acknowledge (status read)
+ *   11 = WAIT_DEASSERT: 4-cycle dead time before possible re-trigger
+ *
+ * Handles both XT (edge-triggered) and AT (level-triggered) PICs.
+ *=====================================================================*/
+
+$define S_IDLE    'b'00
+$define S_PENDING 'b'01
+$define S_PRESENT 'b'10
+$define S_DEAD    'b'11
+
+FIELD irq_state = [irq_state1, irq_state0];
+FIELD irq_dead  = [irq_dead1, irq_dead0];
+
+/* Rising edge detect on pirq_sync */
+PINNODE = pirq_prev;
+pirq_prev.d = pirq_sync;
+pirq_rising = pirq_sync & !pirq_prev;
+
+/* State transitions */
+irq_state0.d =
+    /* IDLE -> PENDING on rising edge of pirq_sync */
+    (irq_state == S_IDLE & pirq_rising)
+    /* PRESENTED -> WAIT_DEASSERT on ack */
+  # (irq_state == S_PRESENT & irq_ack)
+    /* WAIT_DEASSERT stays if dead time not elapsed */
+  # (irq_state == S_DEAD & !(irq_dead1 & irq_dead0));
+
+irq_state1.d =
+    /* PENDING -> PRESENTED (immediate, 1 clock) */
+    (irq_state == S_PENDING)
+    /* PRESENTED holds until ack */
+  # (irq_state == S_PRESENT & !irq_ack)
+    /* WAIT_DEASSERT -> PENDING if pirq still high */
+  # (irq_state == S_DEAD & irq_dead1 & irq_dead0 & pirq_sync);
+
+/* Dead-time counter: counts 0-3 during WAIT_DEASSERT state */
+irq_dead0.d = (irq_state == S_DEAD) & !irq_dead0;
+irq_dead1.d = (irq_state == S_DEAD) & (irq_dead1 $ irq_dead0);
+
+/* IRQ output: HIGH during PENDING and PRESENTED states */
+/* IRQ output: HIGH during PENDING and PRESENTED states only */
+IRQ_OUT = (irq_state == S_PENDING) # (irq_state == S_PRESENT);
+IRQ_OUT.oe = IRQ_SENSE;  /* Only drive if IRQ jumper is set */
+
+/*=====================================================================
+ * PARALLEL BRIDGE: ESP32-facing signals
+ *
+ * PA0-PA3: register address (from ISA A0-A3, latched)
+ * PRW:     read/write direction
+ * PSTROBE: data strobe pulse
+ *=====================================================================*/
+
+/* Drive register address to ESP32 (directly from ISA address during cycle) */
+PA0 = A0;
+PA1 = A1;
+PA2 = A2;
+PA3 = A3;
+
+/* PRW: HIGH during read operations, LOW during write */
+PRW = IOR & chip_sel;
+
+/* Drive ESP32 data bus with write latch contents (always driven, ESP32 reads on PSTROBE) */
+/* Drive ESP32 data bus only during write operations (CPLD -> ESP32) */
+/* During read operations, ESP32 drives PD0-PD7 and CPLD reads them */
+pd_drive = chip_sel & !PRW;  /* Drive PD bus when CPLD is writing to ESP32 */
+
+PD0.oe = pd_drive;
+PD1.oe = pd_drive;
+PD2.oe = pd_drive;
+PD3.oe = pd_drive;
+PD4.oe = pd_drive;
+PD5.oe = pd_drive;
+PD6.oe = pd_drive;
+PD7.oe = pd_drive;
+
+PD0 = isa_in_latch0;
+PD1 = isa_in_latch1;
+PD2 = isa_in_latch2;
+PD3 = isa_in_latch3;
+PD4 = isa_in_latch4;
+PD5 = isa_in_latch5;
+PD6 = isa_in_latch6;
+PD7 = isa_in_latch7;
+
+/* Strobe generation (registered, synchronous to 16 MHz) */
+/* strobe_req fires on ISA write completion or non-cached read start */
+strobe_req.d = (write_strobe & !strobe_req)     /* ISA write just completed */
+             # (cache_miss_read & !strobe_req);  /* Non-cached read started */
+             /* Self-clearing: only HIGH for one clock cycle */
+
+strobe_phase.d = strobe_req;  /* One clock delay for pulse shaping */
+
+PSTROBE = !strobe_req;  /* Active LOW pulse, one CLK period wide (62.5ns) */
+
+/*=====================================================================
+ * IOCS16# - 16-BIT SLOT SUPPORT
+ *
+ * Assert (active low) when card is in 16-bit slot AND the register
+ * being accessed is the data port (0x04 or 0x05).
+ *=====================================================================*/
+
+IOCS16 = chip_sel & !SLOT16 & (is_reg04 # is_reg05);
+IOCS16.oe = chip_sel & !SLOT16;
+
+/*=====================================================================
+ * RESET HANDLING
+ *
+ * On ISA RESET: clear all state machines, deassert outputs.
+ * RESET is active LOW after RC filter + Schmitt trigger.
+ *=====================================================================*/
+
+/* All registered nodes use async reset via .ar */
+iochrdy_hold.ar = RESET;
+read_pending.ar = RESET;
+[wdog7..wdog0].ar = RESET;
+irq_state0.ar = RESET;
+irq_state1.ar = RESET;
+irq_dead0.ar = RESET;
+irq_dead1.ar = RESET;
+strobe_req.ar = RESET;
+strobe_phase.ar = RESET;
+pirq_prev.ar = RESET;
+iow_prev.ar = RESET;
+
+/*=====================================================================
+ * TEST POINTS
+ *=====================================================================*/
+
+TP0 = chip_sel;         /* Directly visible: card is being addressed */
+TP1 = iochrdy_hold;     /* Directly visible: bus is being held */

@@ -1,0 +1,56 @@
+# Quartus II
+db/
+incremental_db/
+output_files/
+simulation/
+*.qws
+*.bak
+*.done
+*.jdi
+*.pin
+*.summary
+*.pof
+*.sof
+*.jed
+*.fit
+*.rpt
+
+# WinCUPL
+*.abs
+*.doc
+*.mx
+*.pla
+*.sim
+*.tt2
+
+# ESP-IDF
+phase0/firmware/build/
+phase0/firmware/sdkconfig
+phase0/firmware/sdkconfig.old
+phase0/firmware/managed_components/
+phase0/firmware/dependencies.lock
+
+# DOS build output
+*.com
+*.obj
+*.map
+*.lst
+*.exe
+
+# KiCad
+*.kicad_prl
+*-backups/
+fp-info-cache
+*.000
+*.bck
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
