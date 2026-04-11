@@ -26,6 +26,16 @@ What NetISA does **not** unlock: modern graphical web browsing (CPU-bound regard
 
 The specific thing that is new: an open-source, register-mapped ISA coprocessor that terminates TLS 1.3 in hardware-accelerated silicon, with deterministic bus timing on a CPLD so the crypto engine never fights the bus cycle.
 
+## Roadmap beyond DOS
+
+v1 ships as a DOS/Windows 3.x peripheral. The firmware and CPLD are deliberately architected so that native drivers for modern retro operating systems can land in future releases **without any hardware changes** — the ISA interface is a mode-agnostic byte shuttle, and new behavior lives entirely in ESP32 firmware and host-OS drivers.
+
+- **v1.0** — MS-DOS / FreeDOS / Windows 3.x, Session Mode: card owns TCP/IP and TLS, host talks at the session level via INT 63h.
+- **v2.0** — Windows 95/98/NT and Linux/BSD kernel drivers, **NIC Mode**: card presents as a raw Ethernet adapter, host OS runs its own TCP/IP stack. Enables NDIS miniports for Win9x/NT, `net_device` drivers for Linux, and native drivers for NetBSD and FreeBSD. Legacy Winsock applications (Netscape 4, IE3/4, mIRC, ICQ) gain TLS 1.3 through an optional Winsock LSP that routes port-443/993/465 traffic through the card's session-mode engine.
+- **v2.5** — **NIC + kTLS Offload Mode**: Linux kTLS and FreeBSD kTLS integration. Host kernel does TCP/IP and the one-shot TLS handshake in software; the card transparently handles per-packet AES-GCM record framing on established sessions. This is the same architecture Mellanox ConnectX, Chelsio T6, and Intel E810 use for kTLS-capable datacenter NICs — brought to a 486.
+
+The three driver modes are specified in [docs/netisa-architecture-spec.md](docs/netisa-architecture-spec.md) section 2.6.1. v1 firmware already recognizes the `CMD_SET_MODE` opcode so that future host drivers probing for advanced-mode support receive a clean, defined error response rather than silent failure. The register map, CPLD logic, and electrical interface are forward-compatible with all three modes on day one.
+
 ## Status
 
 **Phase 0: Parts ordered, awaiting hardware.**

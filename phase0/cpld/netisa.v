@@ -136,6 +136,13 @@ wire is_reg0D = chip_sel & (reg_sel == 4'hD); // Signal Quality
 wire cache_hit = is_reg00 | is_reg06 | is_reg07 | is_reg08 | is_reg09
                | is_reg0A | is_reg0B | is_reg0C;
 
+// Reserved registers 0x03, 0x0E, 0x0F are intentionally NOT in cache_hit.
+// They fall through to cache_miss_read, which makes the ESP32 the sole
+// arbiter of their semantics across firmware versions. In v1 (Session
+// Mode) firmware, reads return 0x00. In v2+ (NIC Mode) firmware, they
+// carry NIC packet length and TX/RX control without requiring any CPLD
+// changes. See architecture spec section 2.6.1 "Driver Modes".
+
 wire cache_miss_read = chip_sel & IOR & ~cache_hit;
 wire irq_ack = is_reg00 & IOR;
 

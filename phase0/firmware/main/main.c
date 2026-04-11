@@ -93,6 +93,33 @@ static volatile uint32_t last_read_reg = 0;
 /* This enables the DOS loopback test: write a byte, read it back. */
 static volatile uint8_t loopback_byte = 0x00;
 
+/* ===== Driver Mode Scaffolding (Reserved) =====
+ *
+ * v1 firmware implements Session Mode only. NIC Mode (v2.0) and NIC +
+ * kTLS Offload Mode (v2.5) are reserved for future firmware releases on
+ * the same hardware. The CMD_SET_MODE command opcode is recognized here
+ * in Phase 0 so that future host drivers (Windows NDIS, Linux net_device,
+ * BSD network drivers) attempting to probe for advanced-mode support
+ * receive a clean ERR_MODE_UNSUPPORTED response instead of silent failure.
+ *
+ * Protocol (host side):
+ *   1. Host writes mode byte to reg 0x04 (Data In port)
+ *   2. Host writes CMD_SET_MODE opcode to reg 0x00 (Command Register)
+ *   3. Host reads reg 0x06 (Error Code) to check result
+ *
+ * See architecture spec section 2.6.1 "Driver Modes".
+ */
+#define CMD_SET_MODE            0x10
+#define MODE_SESSION            0x00  /* v1 default */
+#define MODE_NIC                0x01  /* v2.0 reserved */
+#define MODE_NIC_KTLS           0x02  /* v2.5 reserved */
+
+#define ERR_SUCCESS             0x00
+#define ERR_MODE_UNSUPPORTED    0x15
+
+/* Current driver mode. Always MODE_SESSION in v1. */
+static volatile uint8_t current_mode = MODE_SESSION;
+
 /* ===== Fast GPIO Read/Write Helpers ===== */
 
 /**
@@ -216,11 +243,31 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
         uint8_t val = read_parallel_data();
 
         if (reg == 0x04) {
-            /* Data port: store for loopback */
+            /* Data port: store for loopback AND as command payload.
+             * In Phase 0 these are the same byte; in v1+ firmware they
+             * live in separate command/data queues. */
             loopback_byte = val;
         } else if (reg == 0x00) {
-            /* Command register write */
-            /* Phase 0: just store it */
+            /* Command register write. Recognize the CMD_SET_MODE opcode
+             * reserved for future driver-mode switching (see spec
+             * section 2.6.1). All other opcodes are stored for Phase 0
+             * observability and handled by higher-level firmware in v1+.
+             *
+             * IRAM_ATTR ISR context: NO logging here, only register ops. */
+            if (val == CMD_SET_MODE) {
+                uint8_t requested = loopback_byte;
+                if (requested == MODE_SESSION) {
+                    /* Already in session mode; acknowledge success. */
+                    current_mode = requested;
+                    registers[0x06] = ERR_SUCCESS;
+                } else {
+                    /* v1 firmware does not implement NIC or NIC+kTLS modes.
+                     * Return a defined error so future drivers can probe
+                     * for advanced-mode support without silent failure. */
+                    registers[0x06] = ERR_MODE_UNSUPPORTED;
+                    stat_errors++;
+                }
+            }
             registers[0] = val;
         } else if (reg == 0x07 && val == 0xFF) {
             /* Reset command: reboot ESP32 */
@@ -320,10 +367,10 @@ static void console_task(void *arg)
         if (w != prev_writes || r != prev_reads) {
             ESP_LOGI(TAG, "Stats: W=%lu R=%lu E=%lu | "
                      "Last W: reg=0x%02lX val=0x%02lX | "
-                     "Last R: reg=0x%02lX | Loopback=0x%02X",
+                     "Last R: reg=0x%02lX | Loopback=0x%02X | Mode=%u",
                      w, r, e,
                      last_write_reg, last_write_val,
-                     last_read_reg, loopback_byte);
+                     last_read_reg, loopback_byte, current_mode);
         }
 
         prev_writes = w;

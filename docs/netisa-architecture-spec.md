@@ -231,6 +231,70 @@ The card asserts IOCS16# when installed in a 16-bit slot, enabling word-width da
 
 Bits 0-2 are managed by the ESP32 and pushed to the CPLD cache. Bits 3, 5, 6 are managed by the CPLD hardware. This register is cached in the CPLD and reads with zero wait states.
 
+### 2.6.1 Driver Modes
+
+The CPLD's register interface is a mode-agnostic byte shuttle: it decodes addresses, handles IOCHRDY wait states, and moves bytes between the ISA bus and the ESP32-S3 parallel bus. What those bytes *mean* is determined by ESP32 firmware, which exposes one of three **driver modes** selected by the host at initialization. This design allows new host operating systems (Windows NDIS, Linux kernel, BSD networking, future platforms) to be supported through firmware and driver updates alone, with no hardware or CPLD changes.
+
+v1 firmware implements **Session Mode** only. NIC Mode and NIC + kTLS Offload Mode are reserved for future firmware releases on the same PCB and the same CPLD design. The register map, CPLD logic, and electrical interface are already compatible with all three modes; only the ESP32 firmware needs to be extended.
+
+**Mode 0 — Session Mode (v1, default)**
+
+The card owns the entire TCP/IP stack, TLS state, and session multiplexing. The host speaks to the card at the TLS-session level via the command/response mailbox model in Section 2.7: "open a TLS session to `host.example.com:443`", "send N bytes on session 3", "receive any available bytes on session 1". The retro CPU never touches TCP, IP, DNS, or TLS.
+
+- Host OS examples: MS-DOS, FreeDOS, Windows 3.x (real-mode TSR)
+- Host CPU requirement: 8088 and up
+- Host access: INT 63h API via NETISA.COM TSR (Section 4)
+
+This is the only mode that works on XT-class (8088/8086) hardware, where the host is too slow to run any TCP/IP stack in software, and it is the only mode shipped in v1.
+
+**Mode 1 — NIC Mode (v2.0 reserved)**
+
+The card presents as an Ethernet packet interface. The host transmits and receives raw Ethernet (or IP) frames through the card's bulk data port and runs its own TCP/IP stack (Linux kernel, Windows NDIS, BSD networking). The card becomes a WiFi/Ethernet bridge in this mode — it does not see TCP connections or TLS sessions, and it does not participate in routing or name resolution.
+
+- Host OS examples: Windows 95/98/NT 4.0 (NDIS miniport), Linux (net_device), NetBSD/FreeBSD
+- Host CPU requirement: 386+ (must be able to run a TCP/IP stack at usable speed)
+- Host access: host-OS-native NIC drivers (planned v2.0)
+
+In this mode, TLS is the host operating system's responsibility. The host uses whatever TLS library it already has (OpenSSL, SChannel, mbedTLS). NetISA provides no crypto acceleration in pure NIC Mode; it only provides the physical link. This mode is most useful as the foundation for Mode 2.
+
+**Mode 2 — NIC + kTLS Offload Mode (v2.5 reserved)**
+
+An enhancement of NIC Mode in which the host OS's kernel TCP/IP stack establishes TCP connections and performs the one-shot TLS 1.3 handshake in software, then hands the derived session keys down to the card via a key-install command. After the rekey, the card transparently performs AES-GCM (or ChaCha20-Poly1305) record framing on the identified TCP flow, so host userspace reads and writes plaintext while the wire carries ciphertext.
+
+This is the same architecture Mellanox ConnectX, Chelsio T6, and Intel E810 NICs use for their kTLS-capable Ethernet adapters. It is the architectural sweet spot for 386/486/Pentium Linux and Windows hosts: they are fast enough to run TCP/IP and a one-time TLS handshake in software, but not fast enough to do per-packet AES-GCM at line rate. Offloading only the record layer maximizes throughput without requiring full session-level state on the card.
+
+- Host OS examples: Linux 4.13+ with kTLS, FreeBSD 13+ with kTLS, Windows with an equivalent SChannel offload hook (future)
+- Host CPU requirement: 386+ for basic operation, 486+ practical, Pentium+ ideal
+- Host access: host-OS-native NIC drivers with kTLS integration (planned v2.5)
+
+**Mode selection and v1 behavior**
+
+The driver mode is selected by the host at driver-init time using a command byte written to the Command Register (reg 0x00), with the mode value staged in the data port (reg 0x04) beforehand:
+
+| Command opcode | Payload (reg 0x04) | Effect |
+|----------------|---------------------|--------|
+| `0x10 CMD_SET_MODE` | `0x00 MODE_SESSION` | Remain/enter Session Mode |
+| `0x10 CMD_SET_MODE` | `0x01 MODE_NIC` | Switch to NIC Mode (v2+ firmware) |
+| `0x10 CMD_SET_MODE` | `0x02 MODE_NIC_KTLS` | Switch to NIC + kTLS Mode (v2.5+ firmware) |
+
+Firmware that does not implement a requested mode returns error code `0x15 ERR_MODE_UNSUPPORTED` via the Error Code register (reg 0x06). v1 firmware accepts `MODE_SESSION` and rejects `MODE_NIC` and `MODE_NIC_KTLS`, guaranteeing that a future host driver attempting to probe for advanced-mode support receives a clean, defined error rather than silent failure or undefined behavior.
+
+The default mode after power-on or reset is always Session Mode. DOS software and the v1 TSR never need to issue `CMD_SET_MODE` and are unaffected by this mechanism. A mode change requires a clean card reset; the card does not support live mode switching because the ESP32's TCP/IP and crypto state differ radically between modes, and mid-flight switching would require tearing down and rebuilding both.
+
+**v2+ NIC Mode register allocation (reserved)**
+
+When NIC Mode firmware is implemented, registers 0x03, 0x0E, and 0x0F take on the following semantics. In v1 firmware (Session Mode), these registers read as zero and writes to them are ignored.
+
+| Offset | Read (NIC Mode) | Write (NIC Mode) |
+|--------|-----------------|-------------------|
+| 0x03 | NIC Status (bit 0 RX_READY, bit 1 TX_EMPTY, bit 2 LINK_UP, bit 3 RX_OVERRUN) | NIC Control (bit 0 RX_ACK, bit 1 TX_COMMIT) |
+| 0x0E | RX packet length low byte (valid when RX_READY set) | TX packet length low byte (write before TX_COMMIT) |
+| 0x0F | RX packet length high byte + RX flags | TX packet length high byte + TX flags |
+
+Bulk packet payload flows through the data registers (0x04/0x05) using the same 16-bit IOCS16 mechanism as Session Mode bulk transfers: the host reads or writes `length` bytes per packet through `REP INSW` / `REP OUTSW` (or byte-at-a-time in an 8-bit slot), then acknowledges (RX) or commits (TX) via reg 0x03.
+
+This allocation is a contract for v2+ firmware. v1 firmware does not decode these addresses as cached reads (see the `cache_hit` expression in `phase0/cpld/netisa.v`), so the ESP32 remains the sole arbiter of their semantics across firmware versions. No CPLD changes are required to introduce NIC Mode or NIC + kTLS Mode in future firmware releases — the hardware shipped in v1 is forward-compatible with all three modes by design.
+
 ### 2.7 Data Flow Model
 
 Communication between host and card uses a command/response mailbox model:
@@ -877,6 +941,7 @@ Trace mode adds latency to all operations (~5-10% on 8088, negligible on 386+) a
 | 0x12 | ERR_SD_WRITE | MicroSD write error |
 | 0x13 | ERR_CRYPTO_FAILED | Cryptographic operation failed |
 | 0x14 | ERR_NOT_IMPLEMENTED | Function defined but not yet implemented in firmware |
+| 0x15 | ERR_MODE_UNSUPPORTED | Requested driver mode not supported by this firmware version (see Section 2.6.1) |
 
 **Note on XFER_TIMEOUT:** Transfer timeout (IOCHRDY watchdog expiry during bulk reads) is signaled via Status Register bit 5, not via the error code mechanism. It is a CPLD hardware flag, not a firmware error code. See Section 5.3.5 for the bulk transfer error detection protocol. The TSR checks Status Register bit 5 after each block transfer and retries if set.
 | 0xFF | ERR_UNKNOWN | Unexpected internal error |
@@ -1723,23 +1788,44 @@ CISAWIFI.EXE
 
 ## 7. OS Compatibility
 
+All host OS targets use the **driver modes** defined in Section 2.6.1. Session Mode is the only mode shipped in v1 and is the only mode that works on 8088/8086 class hardware. NIC Mode and NIC + kTLS Offload Mode are v2+ deliverables that unlock modern multi-tasking OS support without any hardware changes.
+
 ### 7.1 MS-DOS / FreeDOS
 
-Primary target. INT API available directly. All example code and documentation targets DOS first.
+Primary target. Uses **Session Mode** exclusively. INT API available directly. All example code and documentation targets DOS first.
 
 ### 7.2 Windows 3.x (Standard and Enhanced Mode)
+
+Uses **Session Mode** via the DOS TSR. Win3.x is slow enough and single-tasking enough that a full NIC driver provides little benefit over the TSR+INT 63h path.
 
 - **Standard Mode:** Real-mode TSR loaded before Windows works natively. INT API callable from Windows applications via DPMI real-mode callback.
 - **Enhanced Mode:** Requires a VxD (Virtual Device Driver) to virtualize the INT interface for multiple DOS boxes and Win16 applications. v2 deliverable.
 
 ### 7.3 Windows 95/98/ME
 
-- Real-mode TSR loaded via CONFIG.SYS/AUTOEXEC.BAT is accessible to DOS applications running in Windows.
-- Native Win32 WinSock provider (layered over the INT API) is a v2 deliverable. Would enable any WinSock application to transparently use NetISA for TLS.
+DOS applications: **Session Mode** via the real-mode TSR loaded from CONFIG.SYS/AUTOEXEC.BAT, accessible to DOS boxes under Windows.
 
-### 7.4 OS/2
+Win32 applications (v2.0+): **NIC Mode** via an NDIS 3.1 / 4.0 miniport driver. The card appears as a standard Ethernet adapter in Network Neighborhood and every WinSock application (Netscape, IE3/4, mIRC, ICQ) gains internet access using the host OS's TCP/IP stack.
 
-Not targeted for v1. INT API may work via OS/2's DOS compatibility layer but is untested.
+Win32 TLS offload (v2.0+, optional): **NIC Mode** with a Winsock LSP (Layered Service Provider) that transparently intercepts connections to TLS ports (443, 993, 465, 8883) and routes them through the card's TLS offload engine. This lets legacy Winsock apps like Netscape Navigator 4 reach TLS 1.3-only sites *because the crypto lives in the card*, not because Netscape has been modernized.
+
+### 7.4 Windows NT 3.51 / 4.0
+
+Uses **NIC Mode** via a kernel-mode NDIS miniport (v2.0+). Same approach as Win9x but targeting NT's kernel-mode driver model. NT 4.0 Workstation on a 486 with NetISA is an amusing demo and a real capability for anyone still running NT-era software.
+
+### 7.5 Linux
+
+Uses **NIC Mode** via a `net_device` kernel driver layered on the `isa_driver` framework (v2.0+). Once the card appears as a standard Linux network interface, every userspace socket works — no userspace library, no LD_PRELOAD shim, no custom API.
+
+**kTLS integration (v2.5+):** Linux's kernel TLS subsystem (`kTLS`, mainline since 4.13) is an exact architectural fit for NetISA. Userspace does the TLS handshake via OpenSSL or equivalent, then pushes session keys into the kernel, which hands them to a kTLS-capable NIC for in-line AES-GCM record framing. Mellanox, Chelsio, and Intel ship datacenter NICs that do this. NetISA can do the same thing on a 486 running Linux: the kernel handles TCP/IP and the one-shot handshake, and the card handles per-packet crypto. This is the project's headline performance story for Linux hosts.
+
+### 7.6 NetBSD / FreeBSD
+
+Uses **NIC Mode** via a native BSD network interface driver (v2.0+ or community-contributed). NetBSD in particular treats vintage hardware as a first-class support target, and the project has a small but enthusiastic retro-BSD community. FreeBSD 13+ also supports kTLS and would benefit from the v2.5 record-layer offload mode in the same way Linux does.
+
+### 7.7 OS/2
+
+Not targeted for v1. INT API may work via OS/2's DOS compatibility layer but is untested. A native NDIS driver using NIC Mode is a community-contribution candidate for v2.5+.
 
 ---
 
@@ -2167,10 +2253,16 @@ This means the card is unbrickable via normal MicroSD firmware updates. The only
 - Cookie jar helper in SDK
 - Community-reported bug fixes
 
-### v2.0: Windows, UDP, and Ecosystem
+### v2.0: Windows, Linux, UDP, and Ecosystem
 
+- **NIC Mode firmware** (Section 2.6.1, Mode 1): card exposes a raw Ethernet packet interface so host operating systems can run their own TCP/IP stacks. No hardware changes — pure ESP32 firmware addition.
+- **Windows 95/98 NDIS 3.1/4.0 miniport driver** using NIC Mode. Card appears as a standard Ethernet adapter to Winsock.
+- **Windows 95/98 Winsock LSP (optional)** that transparently routes TLS port connections through the card's session-mode TLS engine, enabling Netscape Navigator 4 / IE3 / IE4 to reach TLS 1.3-only sites.
+- **Windows NT 3.51 / 4.0 NDIS miniport** (kernel-mode) using NIC Mode.
+- **Linux `net_device` kernel driver** using NIC Mode, built on the `isa_driver` framework.
+- **NetBSD / FreeBSD network interface driver** using NIC Mode (may be community-contributed).
 - Windows 3.1 Enhanced Mode VxD
-- Windows 95/98 WinSock provider
+- Windows 95/98 WinSock provider (session-mode DOS TSR bridge, complements the NDIS path)
 - UDP socket support (Group 0x08)
 - TLS 1.2 backward compatibility (for older servers)
 - Client certificate authentication (mutual TLS)
@@ -2182,6 +2274,9 @@ This means the card is unbrickable via normal MicroSD firmware updates. The only
 
 ### v2.5 and Beyond (Community-Driven)
 
+- **NIC + kTLS Offload Mode firmware** (Section 2.6.1, Mode 2): card performs in-line AES-GCM / ChaCha20-Poly1305 record framing on host-OS-negotiated TLS sessions, matching the architecture used by Mellanox / Chelsio / Intel kTLS-capable datacenter NICs. Purely a firmware release; same hardware.
+- **Linux kTLS integration** in the NIC Mode driver, exposing the card as a kTLS offload target to the mainline kernel TLS subsystem. A 486 running Linux reads and writes TLS sessions at the speed of the wire, not the speed of software AES.
+- **FreeBSD 13+ kTLS integration** — same approach as Linux, leveraging FreeBSD's native kTLS support.
 - DTLS (UDP-based TLS)
 - Bluetooth (ESP32-S3 has BLE)
 - Additional cipher suites as needed
