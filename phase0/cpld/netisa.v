@@ -177,8 +177,10 @@ wire write_strobe  = iow_rising & chip_sel;
 
 reg [7:0] isa_in_latch;
 
-always @(posedge CLK) begin
-    if (write_strobe)
+always @(posedge CLK or posedge RESET) begin
+    if (RESET)
+        isa_in_latch <= 8'h00;
+    else if (write_strobe)
         isa_in_latch <= D;
 end
 
@@ -257,8 +259,10 @@ end
 
 reg [7:0] isa_out_latch;
 
-always @(posedge CLK) begin
-    if (esp_data_valid)
+always @(posedge CLK or posedge RESET) begin
+    if (RESET)
+        isa_out_latch <= 8'h00;
+    else if (esp_data_valid)
         isa_out_latch <= PD;
 end
 
