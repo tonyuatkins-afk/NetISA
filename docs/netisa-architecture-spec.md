@@ -213,13 +213,13 @@ The card asserts IOCS16# when installed in a 16-bit slot, enabling word-width da
 | 0x03 | Reserved | Reserved | 8-bit |
 | 0x04-0x05 | Data Out (bulk read) | Data In (bulk write) | 8/16-bit* |
 | 0x06 | Error Code | Error Clear | 8-bit |
-| 0x07 | Firmware Version (major) | Reset | 8-bit |
+| 0x07 | Firmware Version (major) | Reset (write 0xFF to trigger) | 8-bit |
 | 0x08 | Firmware Version (minor) | Reserved | 8-bit |
 | 0x09 | Firmware Version (patch) | Reserved | 8-bit |
 | 0x0A | Session Count (active) | Reserved | 8-bit |
 | 0x0B | Session Capacity (max) | Reserved | 8-bit |
 | 0x0C | Network Status | Reserved | 8-bit |
-| 0x0D | Signal Quality (WiFi) | Reserved | 8-bit |
+| 0x0D | Signal Quality (WiFi, non-cached — see Section 5.3.5) | Reserved | 8-bit |
 | 0x0E-0x0F | Reserved | Reserved | 8-bit |
 
 *Ports 0x04-0x05 support 16-bit transfers when IOCS16# is asserted (card in 16-bit slot). In an 8-bit slot, only port 0x04 is used for data, one byte at a time.
@@ -1125,8 +1125,8 @@ No wait states needed for writes.
 3. CPLD drives PA0-PA3, PRW high, pulses PSTROBE (request data from ESP32)
 4. ESP32 GPIO ISR fires, prepares data, drives PD0-PD7, asserts PREADY
 5. CPLD's 2-flop synchronizer detects PREADY assertion (2 CLK_16MHZ cycles = 125ns)
-6. CPLD latches PD0-PD7 into data_out_latch (registered capture, no metastability)
-7. CPLD drives data_out_latch onto D0-D7 (ISA bus, separate pins)
+6. CPLD latches PD0-PD7 into isa_out_latch (registered capture, no metastability)
+7. CPLD drives isa_out_latch onto D0-D7 (ISA bus, separate pins)
 8. CPLD releases IOCHRDY (registered state transition, NOT combinational)
 9. Host CPU completes read cycle
 

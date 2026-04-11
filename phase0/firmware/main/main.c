@@ -61,11 +61,21 @@ static const char *TAG = "netisa";
 /* Mirrors the ISA register map. CPLD reads from / writes to these. */
 #define REG_COUNT       16
 
+/* Status register bit layout (reg 0x00) per spec section 2.6:
+ *   bit 0: CMD_READY   (ESP32-managed)
+ *   bit 1: RESP_READY  (ESP32-managed)
+ *   bit 2: ASYNC_DATA  (ESP32-managed)
+ *   bit 3: SAFE_MODE   (CPLD hardware flag from J3 jumper)
+ *   bit 4: reserved (always 0)
+ *   bit 5: XFER_TIMEOUT (CPLD hardware flag from watchdog)
+ *   bit 6: BOOT_COMPLETE (CPLD hardware flag from PBOOT pin)
+ *   bit 7: reserved (always 0)
+ */
 static volatile uint8_t registers[REG_COUNT] = {
-    0x00,   /* 0x00: Status (bit 6=BOOT, bit 5=SAFE) */
+    0x00,   /* 0x00: Status (hardware flags merged by CPLD, see above) */
     0x00,   /* 0x01: Response Length Lo */
     0x00,   /* 0x02: Response Length Hi */
-    0x00,   /* 0x03: Reserved */
+    0x00,   /* 0x03: Reserved (NIC Mode control in v2+) */
     0x00,   /* 0x04: Data Out (bulk) */
     0x00,   /* 0x05: Data Out Hi (16-bit) */
     0x00,   /* 0x06: Error Code */
@@ -76,8 +86,8 @@ static volatile uint8_t registers[REG_COUNT] = {
     0x04,   /* 0x0B: Session Capacity (4 sessions) */
     0x00,   /* 0x0C: Network Status (0=disconnected) */
     0x00,   /* 0x0D: Signal Quality */
-    0x00,   /* 0x0E: Reserved */
-    0x00,   /* 0x0F: Reserved */
+    0x00,   /* 0x0E: Reserved (NIC Mode RX length lo in v2+) */
+    0x00,   /* 0x0F: Reserved (NIC Mode RX length hi in v2+) */
 };
 
 /* ===== Statistics for serial console ===== */
@@ -143,7 +153,10 @@ static inline uint8_t IRAM_ATTR read_parallel_data(void)
 
 /**
  * Write 8-bit value to PD0-PD7 (GPIO4-GPIO11).
- * Sets direction to output, writes value, then returns to input.
+ * Writes the value to the output register BEFORE enabling outputs, so
+ * the lines start driving the correct byte immediately — prevents a
+ * ~10ns glitch where stale previous contents would otherwise appear on
+ * PD0-PD7 between enable and data-set.
  */
 static inline void IRAM_ATTR write_parallel_data(uint8_t val)
 {
@@ -159,12 +172,14 @@ static inline void IRAM_ATTR write_parallel_data(uint8_t val)
         }
     }
 
-    /* Set PD0-PD7 as outputs */
-    GPIO.enable_w1ts = PD_PIN_MASK;
-
-    /* Drive the value */
+    /* Drive the value FIRST (writes to output data register while pins
+     * are still inputs — no effect on bus yet). */
     if (set_mask) GPIO.out_w1ts = set_mask;
     if (clr_mask) GPIO.out_w1tc = clr_mask;
+
+    /* THEN enable PD0-PD7 as outputs. Pins start driving the
+     * already-staged value with no glitch window. */
+    GPIO.enable_w1ts = PD_PIN_MASK;
 }
 
 /**
@@ -406,9 +421,15 @@ void app_main(void)
     /* Initialize parallel bus GPIO */
     init_gpio();
 
-    /* Assert PBOOT: tell CPLD we are ready */
+    /* Assert PBOOT: tell CPLD we are ready.
+     *
+     * The CPLD drives BOOT_COMPLETE (status bit 6) from the synchronized
+     * PBOOT pin directly via hardware flag merging -- no firmware-side
+     * register write is required. Same for SAFE_MODE (bit 3, from jumper
+     * J3) and XFER_TIMEOUT (bit 5, from watchdog). The firmware
+     * controls bits 0-2 only, via the cache-push path (v1+ feature).
+     */
     gpio_set_level(GPIO_PBOOT, 1);
-    registers[0x00] |= 0x40;  /* Set bit 6 = BOOT_COMPLETE */
     ESP_LOGI(TAG, "PBOOT asserted. Card ready for ISA transactions.");
 
     /* Start console reporting task on Core 1 */

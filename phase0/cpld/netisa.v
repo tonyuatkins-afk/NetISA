@@ -1,3 +1,5 @@
+`timescale 1ns / 1ns
+
 // NetISA Rev A - ATF1508AS CPLD Logic (Verilog)
 //
 // Quartus II 13.0sp1 target: EPM7128SLC84-15 (pin-compatible with ATF1508AS)
