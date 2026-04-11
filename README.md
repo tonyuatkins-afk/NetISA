@@ -6,9 +6,9 @@ NetISA is an 8/16-bit ISA expansion card that provides TLS 1.3 cryptographic off
 
 ## Status
 
-**Phase 0: Pre-hardware.** Architecture spec complete. CPLD logic written (Verilog + CUPL). ESP32 loopback firmware written. DOS test program written. Reviewed by four AI reviewers. No hardware has been built yet.
+**Phase 0: Parts ordered, awaiting hardware.** Architecture spec complete. CPLD logic fits 94/128 macrocells (Quartus II 13.0sp1, EPM7128STC100-15). JEDEC file generated via POF2JED. ESP32-S3 firmware builds clean on ESP-IDF v5.5.4. DOS loopback test assembled. Reviewed by five AI reviewers. All build artifacts ready to flash.
 
-Next step: run netisa.v through Quartus II fitter, order parts, build prototype.
+Next step: solder breakout boards, wire prototype, walk the 9-gate validation checklist.
 
 ## Hardware
 
