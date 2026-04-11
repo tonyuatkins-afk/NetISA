@@ -41,8 +41,8 @@ The three driver modes are specified in [docs/netisa-architecture-spec.md](docs/
 **Phase 0: Parts ordered, awaiting hardware.**
 
 - Architecture specification complete (2,800+ lines)
-- CPLD logic: **94/128 macrocells (73%)**, fits EPM7128STC100-15 clean on Quartus II 13.0sp1
-- Verilog testbench: **61/61 passing** (iverilog) — covers address decode, IOCHRDY wait states, watchdog timeout, IRQ state machine, register window
+- CPLD logic: **95/128 macrocells (74%)**, full 16-bit I/O decode (A15-A0), fits EPM7128STC100-15 clean on Quartus II 13.0sp1
+- Verilog testbench: **160/160 passing** (iverilog) — covers address decode, IOCHRDY wait states, watchdog timeout, IRQ state machine, alias rejection, back-to-back cycles, mid-cycle reset, status flag merge, reserved-register pass-through, and more
 - JEDEC file generated via POF2JED, ready to program
 - ESP32-S3 firmware builds clean on ESP-IDF v5.5.4
 - DOS loopback test assembled

@@ -96,11 +96,19 @@ During pre-prototyping and Phase 0, the single-document format is intentional. S
 
 **Address Decode:**
 
-The CPLD monitors address lines A0-A9 plus AEN (Address Enable). When AEN is low (CPU-initiated I/O cycle, not DMA) and A3-A9 match the jumper-configured base address, the CPLD asserts an internal chip-select. A0-A3 then select the individual register within the card's 16-port window. The decode equation is:
+The CPLD monitors the full 16-bit I/O address space (A0-A15) plus AEN (Address Enable). Chip-select asserts when ALL of the following hold:
+
+1. AEN is low (CPU-initiated I/O cycle, not DMA)
+2. A15-A10 are all low (prevents aliasing on AT+ systems at 0x680, 0xA80, 0xE80, 0x1280, etc.)
+3. A9-A4 match the jumper-configured base pattern
+
+A3-A0 then select the individual register within the card's 16-port window. The decode equation is:
 
 ```
-CHIP_SELECT = !AEN & (A9..A4 == JUMPER_PATTERN) & (!IOR | !IOW)
+CHIP_SELECT = !AEN & (A15..A10 == 0) & (A9..A4 == JUMPER_PATTERN)
 ```
+
+Full 16-bit decode is required because AT-era I/O devices routinely live above 0x3FF: SoundBlaster AWE32 EMU8000 at 0x620/0xA20/0xE20, ECP parallel at 0x778, and others. A 10-bit decode would alias NetISA's base at every 1 KB boundary and collide with these devices.
 
 No memory-mapped I/O in v1 (avoids UMB/adapter segment conflicts with EMS, VGA, ROM BIOS, and network boot ROMs).
 
@@ -158,7 +166,7 @@ Directly active signals (directly active means these connect directly to the CPL
 
 | Signal | Direction | Purpose |
 |--------|-----------|---------|
-| A0-A9 | Input | I/O address decode (10 bits = 1024 port range) |
+| A0-A15 | Input | Full 16-bit I/O address decode. A15-A10 required LOW (upper-zero gate); A9-A4 match jumper base; A3-A0 select register within window. See Section 5.4.5. |
 | D0-D7 | Bidirectional | 8-bit data transfer |
 | AEN | Input | Address Enable; low = CPU cycle, high = DMA (ignore) |
 | IOR# | Input | I/O Read strobe; active low |
@@ -1282,7 +1290,13 @@ This approach is simpler, uses zero CPLD macrocells, and is more reliable than a
 
 #### 5.4.5 Address Decode
 
-Combinational decode of A9-A4 (6 bits) against jumper-selected base, with A3-A0 used for register select within the 16-port window. The decode must NOT include A3, or registers 0x08-0x0F will be inaccessible. One caution: the case table must be verified in the fitter to ensure product term count does not exceed macrocell capacity for the equality compare.
+Combinational full 16-bit I/O decode:
+
+- **A15-A10 must all be LOW** (upper-zero gate). All configured base addresses are below 0x400, so any access with any upper-address bit set is not ours. This prevents aliasing at every 1 KB boundary, which on AT+ systems would collide with AWE32 EMU8000 (0x620 / 0xA20 / 0xE20), ECP parallel (0x778), and any other device with A10 or higher asserted.
+- **A9-A4 match the jumper-selected base** (6-bit equality compare; see Section 2.3.1 for the pattern table).
+- **A3-A0 select the register within the 16-port window.** A3 must NOT be included in `chip_sel` — if it were, registers 0x08-0x0F would be inaccessible.
+
+Implementation: `chip_sel = base_match & AEN & upper_zero`, where `upper_zero = ~(A10 | A11 | A12 | A13 | A14 | A15)`. The upper-zero gate adds one macrocell to the fit; verified 95/128 on EPM7128STC100-15 with Quartus II 13.0sp1.
 
 #### 5.4.6 Register Cache Strategy
 

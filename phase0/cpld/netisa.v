@@ -28,7 +28,12 @@ module netisa (
     // Clock
     input  wire        CLK,        // pin 83 GCLK1: 16 MHz
 
-    // ISA Bus: Address
+    // ISA Bus: Address (full 16-bit decode, A15-A0)
+    // A0-A9 decode base + register within the 16-port window.
+    // A10-A15 MUST all be LOW for chip_sel. This prevents aliasing at
+    // every 1 KB boundary (0x680, 0xA80, 0xE80, 0x1280, ...), which
+    // would otherwise collide with AWE32 EMU8000 (0x620/0xA20/0xE20),
+    // ECP parallel (0x778), and other I/O above 0x3FF on AT+ systems.
     input  wire        A0,         // pin 4
     input  wire        A1,         // pin 5
     input  wire        A2,         // pin 6
@@ -39,6 +44,12 @@ module netisa (
     input  wire        A7,         // pin 15
     input  wire        A8,         // pin 16
     input  wire        A9,         // pin 17
+    input  wire        A10,        // pin TBD (Quartus auto-assigns)
+    input  wire        A11,        // pin TBD
+    input  wire        A12,        // pin TBD
+    input  wire        A13,        // pin TBD
+    input  wire        A14,        // pin TBD
+    input  wire        A15,        // pin TBD
 
     // ISA Bus: Data (active-high, accent when read, accept when write)
     inout  wire [7:0]  D,          // pins 18,19,21,23,24,25,27,28
@@ -85,18 +96,27 @@ wire RESET = ~RESET_n;
 // =========================================================================
 // ADDRESS DECODE (combinational)
 //
-// Compare A9-A4 (6 bits) against jumper-selected base.
-// A3-A0 select register within 16-port window.
-// IMPORTANT: Do NOT include A3 in chip_sel or registers 0x08-0x0F are invisible.
+// Full 16-bit I/O decode: A15-A10 must all be LOW (all base addresses
+// are below 0x400), A9-A4 must match the jumper-selected base, and
+// A3-A0 select register within the 16-port window.
+//
+// IMPORTANT: Do NOT include A3 in chip_sel or registers 0x08-0x0F are
+// invisible.
 //
 // Verified patterns (A9..A4):
 //   000: 101000 = 0x280    100: 110000 = 0x300
 //   001: 101001 = 0x290    101: 110001 = 0x310
 //   010: 101010 = 0x2A0    110: 110010 = 0x320
 //   011: 101100 = 0x2C0    111: 110100 = 0x340
+//
+// Requiring A15..A10 all LOW prevents aliasing at every 1 KB boundary
+// (0x680, 0xA80, 0xE80, 0x1280, ...), which on AT+ systems would
+// otherwise collide with AWE32 EMU8000 (0x620/0xA20/0xE20), ECP
+// parallel (0x778), and any other device with A10 or higher set.
 // =========================================================================
 
 wire [5:0] addr_upper = {A9, A8, A7, A6, A5, A4};
+wire       upper_zero = ~(A10 | A11 | A12 | A13 | A14 | A15);
 
 reg [5:0] base_pattern;
 always @(*) begin
@@ -113,7 +133,7 @@ always @(*) begin
 end
 
 wire base_match = (addr_upper == base_pattern);
-wire chip_sel   = base_match & AEN;
+wire chip_sel   = base_match & AEN & upper_zero;
 
 // Register select (A3-A0)
 wire [3:0] reg_sel = {A3, A2, A1, A0};

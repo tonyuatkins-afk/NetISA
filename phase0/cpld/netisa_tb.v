@@ -15,7 +15,7 @@ reg        clk;
 reg        reset_n;
 
 // ISA bus
-reg  [9:0] addr;       // A9..A0
+reg  [15:0] addr;      // A15..A0 (full I/O decode)
 reg        aen_n;
 reg        ior_n;
 reg        iow_n;
@@ -63,9 +63,10 @@ pullup(iochrdy);
 
 netisa dut (
     .CLK(clk),
-    .A0(addr[0]), .A1(addr[1]), .A2(addr[2]), .A3(addr[3]),
-    .A4(addr[4]), .A5(addr[5]), .A6(addr[6]), .A7(addr[7]),
-    .A8(addr[8]), .A9(addr[9]),
+    .A0(addr[0]), .A1(addr[1]), .A2(addr[2]),   .A3(addr[3]),
+    .A4(addr[4]), .A5(addr[5]), .A6(addr[6]),   .A7(addr[7]),
+    .A8(addr[8]), .A9(addr[9]), .A10(addr[10]), .A11(addr[11]),
+    .A12(addr[12]), .A13(addr[13]), .A14(addr[14]), .A15(addr[15]),
     .D(D),
     .AEN_n(aen_n),
     .IOR_n(ior_n),
@@ -179,7 +180,7 @@ task isa_reset;
         aen_n     <= 1'b1;  // CPU cycle (not DMA)
         ior_n     <= 1'b1;
         iow_n     <= 1'b1;
-        addr      <= 10'h000;
+        addr      <= 16'h0000;
         isa_data_out <= 8'h00;
         isa_data_oe  <= 1'b0;
         esp_data_out <= 8'h00;
@@ -201,7 +202,7 @@ endtask
 
 // Write a byte to an ISA port
 task isa_write;
-    input [9:0] port;
+    input [15:0] port;
     input [7:0] data;
     begin
         addr <= port;
@@ -225,7 +226,7 @@ endtask
 
 // Read a byte from an ISA port (cached register, no wait)
 task isa_read_cached;
-    input  [9:0] port;
+    input  [15:0] port;
     output [7:0] data;
     begin
         addr <= port;
@@ -246,7 +247,7 @@ endtask
 
 // Read a byte from a non-cached register, with ESP32 responding
 task isa_read_noncached;
-    input  [9:0] port;
+    input  [15:0] port;
     input  [7:0] esp_response;
     output [7:0] data;
     begin
@@ -1221,6 +1222,126 @@ initial begin
     repeat (4) @(posedge clk);
     isa_read_cached(10'h280, rdata);
     check("PBOOT clears when PBOOT signal deasserts", 1'b0, rdata[6]);
+
+    // ------------------------------------------------------------------
+    // TEST GROUP 24: Full 16-bit address decode, alias rejection
+    //
+    // With A15-A10 all required LOW, the card no longer aliases at
+    // every 1 KB boundary (0x680, 0xA80, etc.). This group exhaustively
+    // tests that the card DOES respond at its configured base and
+    // DOES NOT respond at any alias address that would previously
+    // have matched with 10-bit decode.
+    //
+    // Also verifies no collision with known AT-era I/O devices that
+    // live above 0x3FF: AWE32 EMU8000 at 0x620/0xA20/0xE20 and ECP
+    // parallel at 0x778.
+    // ------------------------------------------------------------------
+    $display("--- Group 24: 16-bit Decode Alias Rejection ---");
+    isa_reset;
+    addr_j <= 3'b000;  // base 0x280
+    @(posedge clk);
+
+    // Sanity: base address still selects normally
+    addr <= 16'h0280;
+    aen_n <= 1'b0;
+    ior_n <= 1'b0;
+    repeat (2) @(posedge clk);
+    check("Base 0x280 selects normally (sanity)", 1'b1, TP0);
+
+    // Alias #1: base + 0x400 (A10 set)
+    addr <= 16'h0680;
+    repeat (2) @(posedge clk);
+    check("No select at 0x680 (A10 alias of 0x280)", 1'b0, TP0);
+
+    // Alias #2: base + 0x800 (A11 set)
+    addr <= 16'h0A80;
+    repeat (2) @(posedge clk);
+    check("No select at 0xA80 (A11 alias of 0x280)", 1'b0, TP0);
+
+    // Alias #3: base + 0xC00 (A10+A11 set)
+    addr <= 16'h0E80;
+    repeat (2) @(posedge clk);
+    check("No select at 0xE80 (A10+A11 alias of 0x280)", 1'b0, TP0);
+
+    // Alias #4: A12 set
+    addr <= 16'h1280;
+    repeat (2) @(posedge clk);
+    check("No select at 0x1280 (A12 alias of 0x280)", 1'b0, TP0);
+
+    // Alias #5: A13 set
+    addr <= 16'h2280;
+    repeat (2) @(posedge clk);
+    check("No select at 0x2280 (A13 alias of 0x280)", 1'b0, TP0);
+
+    // Alias #6: A14 set
+    addr <= 16'h4280;
+    repeat (2) @(posedge clk);
+    check("No select at 0x4280 (A14 alias of 0x280)", 1'b0, TP0);
+
+    // Alias #7: A15 set
+    addr <= 16'h8280;
+    repeat (2) @(posedge clk);
+    check("No select at 0x8280 (A15 alias of 0x280)", 1'b0, TP0);
+
+    // Alias #8: A15+A14+A13+A12+A11+A10 all set (worst case)
+    addr <= 16'hFE80;
+    repeat (2) @(posedge clk);
+    check("No select at 0xFE80 (all upper bits set)", 1'b0, TP0);
+
+    // Known AT-era device collisions previously blocked only by
+    // address comparison; now blocked by the upper-zero gate.
+    addr <= 16'h0620;  // AWE32 EMU8000 low
+    repeat (2) @(posedge clk);
+    check("No select at 0x620 (AWE32 EMU8000)", 1'b0, TP0);
+
+    addr <= 16'h0A20;  // AWE32 EMU8000 alias 1
+    repeat (2) @(posedge clk);
+    check("No select at 0xA20 (AWE32 EMU8000 alias)", 1'b0, TP0);
+
+    addr <= 16'h0E20;  // AWE32 EMU8000 alias 2
+    repeat (2) @(posedge clk);
+    check("No select at 0xE20 (AWE32 EMU8000 alias)", 1'b0, TP0);
+
+    addr <= 16'h0778;  // ECP parallel port
+    repeat (2) @(posedge clk);
+    check("No select at 0x778 (ECP parallel)", 1'b0, TP0);
+
+    // Walk all eight base jumper settings with their A10+ aliases
+    // to prove the upper-zero gate applies to every configured base,
+    // not just 0x280.
+    begin : alias_walk
+        reg [15:0] bases16 [0:7];
+        integer i;
+        bases16[0] = 16'h0280; bases16[1] = 16'h0290;
+        bases16[2] = 16'h02A0; bases16[3] = 16'h02C0;
+        bases16[4] = 16'h0300; bases16[5] = 16'h0310;
+        bases16[6] = 16'h0320; bases16[7] = 16'h0340;
+
+        for (i = 0; i < 8; i = i + 1) begin
+            addr_j <= i[2:0];
+            @(posedge clk);
+
+            // Base should select
+            addr <= bases16[i];
+            repeat (2) @(posedge clk);
+            check("Configured base selects", 1'b1, TP0);
+
+            // Base | 0x400 alias should NOT select
+            addr <= bases16[i] | 16'h0400;
+            repeat (2) @(posedge clk);
+            check("Base+0x400 alias rejected", 1'b0, TP0);
+
+            // Base | 0x1000 alias should NOT select
+            addr <= bases16[i] | 16'h1000;
+            repeat (2) @(posedge clk);
+            check("Base+0x1000 alias rejected", 1'b0, TP0);
+        end
+    end
+
+    ior_n <= 1'b1;
+    aen_n <= 1'b1;
+    addr_j <= 3'b000;
+    @(posedge clk);
 
     // ------------------------------------------------------------------
     // Final global check: bus contention monitor
