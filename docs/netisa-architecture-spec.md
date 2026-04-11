@@ -237,7 +237,7 @@ The card asserts IOCS16# when installed in a 16-bit slot, enabling word-width da
 | 6 | BOOT_COMPLETE | CPLD (when PBOOT asserted by ESP32) | Reset only | ESP32 firmware has completed initialization |
 | 7 | Reserved | | | Always 0 in v1 (was ESP32_ALIVE in early drafts, removed) |
 
-Bits 0-2 are managed by the ESP32 and pushed to the CPLD cache. Bits 3, 5, 6 are managed by the CPLD hardware. This register is cached in the CPLD and reads with zero wait states.
+Bits 0-2 are managed by the ESP32 and pushed to the CPLD status cache via the cache-push protocol (see Section 5.4.6). Bits 3, 5, 6 are managed by the CPLD hardware and merged at read time from CPLD-local signals (J3 jumper, watchdog counter, synchronized PBOOT pin). This register is **the only register cached in the CPLD**; it reads with zero wait states. All other registers are cache-miss reads that insert IOCHRDY wait states while the ESP32 responds via the parallel bus — see Section 5.4.6 for the rationale and Section 5.3.5 for the wait-state protocol.
 
 ### 2.6.1 Driver Modes
 
@@ -1119,9 +1119,11 @@ No wait states needed for writes.
 
 ```
 1. Host CPU executes IN port              (IOR# goes low on ISA bus)
-2. CPLD checks if register has cached data in output latch
-   a. CACHE HIT: drive cached data onto D0-D7 immediately (~10ns). Done.
-   b. CACHE MISS: assert IOCHRDY low (registered, synchronous to CLK_16MHZ)
+2. CPLD checks if the target register is cached (v1: only reg 0x00 Status)
+   a. CACHE HIT (reg 0x00 only): drive cached status byte (with hardware flag
+      merge for bits 3/5/6) onto D0-D7 immediately (~10ns). Done.
+   b. CACHE MISS (all other registers): assert IOCHRDY low (registered,
+      synchronous to CLK_16MHZ)
 3. CPLD drives PA0-PA3, PRW high, pulses PSTROBE (request data from ESP32)
 4. ESP32 GPIO ISR fires, prepares data, drives PD0-PD7, asserts PREADY
 5. CPLD's 2-flop synchronizer detects PREADY assertion (2 CLK_16MHZ cycles = 125ns)
@@ -1155,15 +1157,12 @@ throughput). Instead, the CPLD sets a flag and the TSR checks once per block.
 
 This design allows full-speed REP INSB/OUTSB bulk transfers with a single status check per block. The only cost is that a timeout invalidates an entire block (typically 256-4096 bytes) rather than a single byte. This is acceptable because IOCHRDY timeouts should be rare (indicating ESP32 firmware failure or severe overload), and retrying a 4KB block is far cheaper than checking status per byte.
 
-**Cached registers (zero wait-state reads):**
-- 0x00: Status Register (includes PBOOT flag, error flags)
-- 0x06: Error Code
-- 0x07-0x09: Firmware Version (cached at boot, never changes)
-- 0x0A: Active Session Count
-- 0x0B: Session Capacity
-- 0x0C: Network Status
+**Cached registers (zero wait-state reads, v1):**
+- 0x00: Status Register only (with hardware flag merge for bits 3, 5, 6)
 
-The cache is expanded aggressively per adversarial review recommendation. Only the data ports (0x04-0x05), response length (0x01-0x02), and signal quality (0x0D) require non-cached reads. This means the only time IOCHRDY wait states are inserted is during bulk data transfer and explicit status queries, both of which are latency-tolerant.
+All other reads go through the cache-miss path with IOCHRDY wait states. This is the "status-only cache" decision documented in Section 5.4.6 — the status register is polled in tight loops by the bulk transfer error detection protocol and must be read with zero wait states, while other registers are accessed infrequently enough that IOCHRDY wait states on each read are acceptable.
+
+Status register cache updates from the ESP32 (for bits 0-2 CMD_READY, RESP_READY, ASYNC_DATA) go through a dedicated cache-push protocol described in Section 5.4.6. Hardware flags (bits 3, 5, 6) are merged at read time from CPLD-local signals and do not require firmware intervention.
 
 #### 5.3.6 Bulk Data Transfer
 
@@ -1300,13 +1299,47 @@ Implementation: `chip_sel = base_match & AEN & upper_zero`, where `upper_zero = 
 
 #### 5.4.6 Register Cache Strategy
 
-Expanded per adversarial review. All registers that can be cached, are cached. The ESP32 pushes updates to cache registers proactively via the parallel bus (writes to PD0-PD7 with register address on PA0-PA3 and a PSTROBE pulse).
+**v1 design: only the Status Register (0x00) is cached in the CPLD.** All other reads — including reg 0x06 Error Code, 0x07-0x09 Firmware Version, 0x0A Session Count, 0x0B Session Capacity, and 0x0C Network Status — resolve through the cache-miss path (IOCHRDY wait state → PSTROBE → ESP32 responds → isa_out_latch update → IOCHRDY release).
 
-**Cached (zero wait-state reads, 8 of 16 registers):**
-0x00 Status, 0x06 Error Code, 0x07-0x09 Firmware Version, 0x0A Session Count, 0x0B Session Capacity, 0x0C Network Status
+**Cached (zero wait-state reads, 1 of 16 registers):**
+- 0x00 Status Register, with hardware flag merging for bits 3 (SAFE_MODE), 5 (XFER_TIMEOUT), and 6 (BOOT_COMPLETE)
 
-**Non-cached (IOCHRDY wait states, 6 of 16 registers):**
-0x01-0x02 Response Length, 0x03 Reserved, 0x04-0x05 Data In/Out, 0x0D Signal Quality
+**Non-cached (IOCHRDY wait states, 15 of 16 registers):**
+- 0x01-0x02 Response Length
+- 0x03 Reserved (NIC Mode control in v2+)
+- 0x04-0x05 Data In/Out (bulk transfer port)
+- 0x06 Error Code
+- 0x07-0x09 Firmware Version
+- 0x0A Session Count
+- 0x0B Session Capacity
+- 0x0C Network Status
+- 0x0D Signal Quality
+- 0x0E-0x0F Reserved (NIC Mode packet length in v2+)
+
+**Rationale for the status-only cache:**
+
+Earlier drafts of this spec proposed caching 8 of 16 registers (status, error, version, session counts, network status) to achieve zero-wait-state reads across the entire "fast path" register set. In principle this is attractive. In practice, implementing 8 per-register cache latches plus an ESP32→CPLD cache-push protocol would cost approximately 64 flip-flops plus decode logic, pushing the CPLD toward the 128-macrocell budget limit and introducing a new parallel-bus transaction direction (ESP32 initiates, CPLD accepts). A single-latch "cache" (as implemented in Phase 0 for bus-interface validation) is architecturally confusing because it silently returns the last non-cached read's data for any cached register access.
+
+The **status-register-only cache** is the clean middle ground:
+
+1. **The bulk transfer error detection protocol (Section 5.3.5) requires fast polling of Status Register bit 5 (XFER_TIMEOUT) after every REP INSB block.** Making the status register a cache miss would require an IOCHRDY wait state on every block-boundary check, adding ~1-5 µs of latency per block transfer on an 8088. Status caching preserves the throughput story.
+2. **Every other register is accessed infrequently** — firmware version is polled once at TSR install, error code is only read on failure, session counts are queried periodically by diagnostics. IOCHRDY wait states on these reads add microseconds per call but do not impact steady-state throughput.
+3. **Hardware flag merging for bits 3, 5, 6 must live in the CPLD regardless.** Those bits come from SAFE_MODE (J3 jumper), XFER_TIMEOUT (CPLD watchdog), and PBOOT (synchronized ESP32 pin) — all CPLD-local signals that the ESP32 cannot push via any parallel-bus protocol. The status cache is the natural place to combine these with the ESP32-pushed bits 0-2.
+4. **Macrocell budget:** one 8-bit cache latch for the status register fits easily within the existing design (~8 FFs plus a small write decoder), with room to spare for the cache-push protocol.
+
+**v1 cache-push protocol (TBD — design before v1 firmware development):**
+
+The ESP32 must have a way to update the status register cache latch when CMD_READY, RESP_READY, or ASYNC_DATA (status bits 0-2) change. Candidate mechanisms:
+
+- **Option 1:** Repurpose PREADY as a bidirectional strobe. When the CPLD is idle (no cache miss pending), an ESP32-driven PREADY pulse combined with a specific PA[3:0] pattern signals "take the byte on PD[7:0] as the new status cache value." Lowest pin count, but complicates the PREADY state machine.
+- **Option 2:** Add a dedicated PWRITE signal from ESP32 to CPLD. Clean separation but costs one more GPIO and one more CPLD input pin. Given current pin usage (61/84), this is affordable.
+- **Option 3:** Encode the cache push as a special "reverse" PSTROBE cycle where the ESP32 drives PD, asserts a distinct pattern on PA (e.g., 0x0 with a fixed high bit), and uses PREADY as the commit. Reuses existing pins but requires the CPLD to snoop for the special pattern.
+
+Choice deferred to v1 firmware development (post-Phase 0 hardware validation). Phase 0 Verilog does not implement any cache-push path; this is intentional and correct for loopback validation.
+
+**Phase 0 note (current Verilog implementation):**
+
+The committed Phase 0 netisa.v implements a single shared `isa_out_latch` register that serves both the `chip_sel & IOR & is_reg00` path (cached status read with hardware flag merge) and the non-cached cache-miss path (data updates from ESP32 responses to IN cycles). For Phase 0 loopback testing this is correct and sufficient: the only test that exercises cached reads against firmware-populated data uses `isa_read_cached` after a prior `isa_read_noncached` to preload the latch. **When v1 firmware development begins, the Verilog will be updated to split the status cache latch from the non-cached read path**, and the ESP32 firmware will be extended to push status updates via the selected cache-push protocol above. This is tracked as a v1 deliverable.
 
 #### 5.4.7 Fitter Validation Requirement
 
@@ -2236,6 +2269,7 @@ This means the card is unbrickable via normal MicroSD firmware updates. The only
 ### v1.0: Foundation
 
 - 8/16-bit ISA card with ESP32-S3
+- **CPLD status-register cache + ESP32 cache-push protocol** (Section 5.4.6). Phase 0 ships with a simplified single-latch Verilog that serves loopback testing only; v1 splits the status cache latch from the non-cached read path, adds the ESP32→CPLD cache-push protocol for status bits 0-2 (CMD_READY, RESP_READY, ASYNC_DATA), and keeps hardware flag merging for bits 3 (SAFE_MODE), 5 (XFER_TIMEOUT), and 6 (BOOT_COMPLETE).
 - WiFi connectivity (802.11 b/g/n)
 - TLS 1.3 with certificate validation and session resumption (PSK)
 - STARTTLS support (plaintext-to-TLS upgrade for SMTP/IMAP)
@@ -2325,6 +2359,18 @@ Deliverables:
 - Verify polling mode works when IRQ is disabled
 
 This is the highest-risk phase. If the bus interface doesn't work reliably across all three machine classes, nothing else matters. Budget extra time here. The CPLD design looks correct on paper but real bus loading, chipset timing variation, and ISR latency under load will reveal issues that simulation and pseudocode cannot predict.
+
+**Phase 0 CPLD simplifications (deferred to v1):**
+
+The Phase 0 `netisa.v` implements a single `isa_out_latch` that serves both the status-register cached-read path (with hardware flag merging for bits 3/5/6) and the non-cached register cache-miss path. This is sufficient for Phase 0 loopback validation but is **not** the v1 production cache architecture — see Section 5.4.6 for the full status-only-cache design decision and the ESP32→CPLD cache-push protocol options. The v1 Verilog rework separating the status cache latch from the non-cached-read latch, plus the firmware cache-push implementation, begins after Phase 0 hardware validation passes on all three target machine classes.
+
+**Additional Phase 0 pre-silicon validation already completed:**
+- Verilog testbench: 160/160 tests passing (iverilog), covering address decode (including full 16-bit alias rejection), IOCHRDY wait states and watchdog, IRQ state machine retrigger, back-to-back cycles, mid-cycle reset, status flag merge combinations, reserved-register pass-through, and more.
+- Quartus fit: 95/128 macrocells, 61/84 pins, 0 errors.
+- Quartus TimeQuest: +39.500 ns setup slack, +5.000 ns hold slack, +26.250 ns min pulse width slack at 16 MHz on EPM7128STC100-15 (confirms SDC-loaded constraint analysis is clean).
+- Verilog lint (`iverilog -Wall`): zero warnings.
+- Bus contention monitor in testbench: zero X events across entire test run.
+- JEDEC file generated via POF2JED with JTAG=ON, TDI_PULLUP=ON, TMS_PULLUP=ON.
 
 **Phase 0 Shopping List (exact parts, verified available):**
 
