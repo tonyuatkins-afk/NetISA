@@ -27,7 +27,6 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_system.h"
-#include "esp_core_dump.h"
 #include "nvs_flash.h"
 #include "soc/gpio_struct.h"
 
@@ -102,7 +101,7 @@ static volatile uint8_t loopback_byte = 0x00;
  */
 static inline uint8_t IRAM_ATTR read_parallel_data(void)
 {
-    uint32_t gpio_in = GPIO.in.val;
+    uint32_t gpio_in = GPIO.in;
     uint8_t val = 0;
     val |= ((gpio_in >> GPIO_PD0) & 1) << 0;
     val |= ((gpio_in >> GPIO_PD1) & 1) << 1;
@@ -134,11 +133,11 @@ static inline void IRAM_ATTR write_parallel_data(uint8_t val)
     }
 
     /* Set PD0-PD7 as outputs */
-    GPIO.enable_w1ts.val = PD_PIN_MASK;
+    GPIO.enable_w1ts = PD_PIN_MASK;
 
     /* Drive the value */
-    if (set_mask) GPIO.out_w1ts.val = set_mask;
-    if (clr_mask) GPIO.out_w1tc.val = clr_mask;
+    if (set_mask) GPIO.out_w1ts = set_mask;
+    if (clr_mask) GPIO.out_w1tc = clr_mask;
 }
 
 /**
@@ -146,7 +145,7 @@ static inline void IRAM_ATTR write_parallel_data(uint8_t val)
  */
 static inline void IRAM_ATTR release_parallel_data(void)
 {
-    GPIO.enable_w1tc.val = PD_PIN_MASK;
+    GPIO.enable_w1tc = PD_PIN_MASK;
 }
 
 /**
@@ -154,7 +153,7 @@ static inline void IRAM_ATTR release_parallel_data(void)
  */
 static inline uint8_t IRAM_ATTR read_reg_addr(void)
 {
-    uint32_t gpio_in = GPIO.in.val;
+    uint32_t gpio_in = GPIO.in;
     uint8_t addr = 0;
     addr |= ((gpio_in >> GPIO_PA0) & 1) << 0;
     addr |= ((gpio_in >> GPIO_PA1) & 1) << 1;
@@ -168,7 +167,7 @@ static inline uint8_t IRAM_ATTR read_reg_addr(void)
  */
 static inline int IRAM_ATTR read_prw(void)
 {
-    return (GPIO.in.val >> GPIO_PRW) & 1;
+    return (GPIO.in >> GPIO_PRW) & 1;
 }
 
 /* ===== PSTROBE ISR: Core 0, highest priority ===== */
@@ -197,14 +196,14 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
         write_parallel_data(val);
 
         /* Assert PREADY (HIGH = data valid) */
-        GPIO.out_w1ts.val = (1 << GPIO_PREADY);
+        GPIO.out_w1ts = (1 << GPIO_PREADY);
 
         /* Brief hold for CPLD 2-flop synchronizer (>125ns at 16 MHz) */
         /* At 240 MHz, ~30 NOPs = 125ns. Be generous. */
         for (volatile int i = 0; i < 60; i++) { __asm__ volatile("nop"); }
 
         /* Deassert PREADY */
-        GPIO.out_w1tc.val = (1 << GPIO_PREADY);
+        GPIO.out_w1tc = (1 << GPIO_PREADY);
 
         /* Release data bus */
         release_parallel_data();
@@ -336,24 +335,10 @@ static void console_task(void *arg)
 
 static void init_crashlog(void)
 {
-    /* ESP-IDF core dump to flash is enabled via sdkconfig:
-     *   CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
-     *   CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
-     *
-     * On panic, backtrace is saved to the coredump partition.
-     * On next boot, we check if a coredump exists and log it. */
-
-    esp_core_dump_summary_t summary;
-    esp_err_t err = esp_core_dump_get_summary(&summary);
-
-    if (err == ESP_OK) {
-        ESP_LOGW(TAG, "*** PREVIOUS CRASH DETECTED ***");
-        ESP_LOGW(TAG, "  Task: %s", summary.exc_task);
-        ESP_LOGW(TAG, "  PC:   0x%08lX", (unsigned long)summary.exc_pc);
-        ESP_LOGW(TAG, "  Cause: %ld", (long)summary.ex_info.exc_cause);
-        ESP_LOGW(TAG, "Use 'idf.py coredump-info' for full backtrace.");
-        ESP_LOGW(TAG, "*** END CRASH REPORT ***");
-    }
+    /* Core dump analysis deferred to 'idf.py coredump-info' command.
+     * The esp_core_dump_summary API changed significantly in ESP-IDF v5.5.
+     * For Phase 0 validation, USB serial console captures all crash output. */
+    ESP_LOGI(TAG, "Crashlog: use 'idf.py coredump-info' if a crash occurred.");
 }
 
 /* ===== Main Entry Point ===== */
