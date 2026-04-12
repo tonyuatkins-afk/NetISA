@@ -218,6 +218,8 @@ static inline int IRAM_ATTR read_prw(void)
 static void IRAM_ATTR pstrobe_isr(void *arg)
 {
     /* Clear interrupt */
+    /* TODO(v1): Two+ PSTROBE edges during one ISR collapse to one interrupt.
+     * Fix by polling PSTROBE at ISR exit or switching to level-triggered. */
     gpio_intr_disable(GPIO_PSTROBE);
 
     uint8_t reg = read_reg_addr();

@@ -172,6 +172,8 @@ wire cache_hit = is_reg00 | is_reg06 | is_reg07 | is_reg08 | is_reg09
 // changes. See architecture spec section 2.6.1 "Driver Modes".
 
 wire cache_miss_read = chip_sel & IOR & ~cache_hit;
+// TODO(v1): irq_ack is level-detected. Held IOR + held PIRQ causes rapid
+// ACK-DEAD cycling. Fix by adding IOR edge detector like IOW.
 wire irq_ack = is_reg00 & IOR;
 
 // =========================================================================
@@ -387,6 +389,8 @@ assign PA = {A3, A2, A1, A0};
 assign PRW = IOR & chip_sel;
 
 // ESP32 data bus: drive write latch during writes, tri-state during reads
+// TODO(v1): pd_drive can overlap with ESP32 still driving PD from previous
+// read on fast 486. Fix by requiring IOW in pd_drive qualification.
 wire pd_drive = chip_sel & ~PRW;
 assign PD = pd_drive ? isa_in_latch : 8'bz;
 
