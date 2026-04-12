@@ -27,6 +27,9 @@ launcher: .SYMBOLIC
 cathode: .SYMBOLIC
 	cd dos && wmake -f Makefile cathode
 
+discord: .SYMBOLIC
+	cd dos && wmake -f Makefile discord
+
 test: phase0\dos\nisatest.com .SYMBOLIC
 
 phase0\dos\nisatest.com: phase0\dos\nisatest.asm

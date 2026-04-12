@@ -38,13 +38,20 @@ CATHODE_OBJS = cathode\main.obj cathode\browser.obj cathode\render.obj &
 
 CATHODE_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=cathode
 
-all: tsr launcher cathode .SYMBOLIC
+DISCORD_OBJS = discord\main.obj discord\discord.obj discord\render_dc.obj &
+	discord\input_dc.obj discord\stub_discord.obj
+
+DISCORD_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=discord
+
+all: tsr launcher cathode discord .SYMBOLIC
 
 tsr: netisa.com .SYMBOLIC
 
 launcher: netisa.exe .SYMBOLIC
 
 cathode: cathode.exe .SYMBOLIC
+
+discord: discord.exe .SYMBOLIC
 
 launcher_hw: netisa_hw.exe .SYMBOLIC
 
@@ -135,12 +142,40 @@ cathode\urlbar.obj: cathode\urlbar.c cathode\urlbar.h cathode\input.h lib\screen
 cathode\stub_pages.obj: cathode\stub_pages.c cathode\stub_pages.h cathode\page.h cathode\render.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\stub_pages.obj cathode\stub_pages.c
 
+# Discord client
+discord.exe: $(DISCORD_OBJS) $(LIB_SCREEN)
+	$(LINKER) system dos name discord.exe &
+		file discord\main.obj &
+		file discord\discord.obj &
+		file discord\render_dc.obj &
+		file discord\input_dc.obj &
+		file discord\stub_discord.obj &
+		file lib\screen.obj &
+		option quiet
+
+discord\main.obj: discord\main.c discord\discord.h lib\screen.h
+	$(CC) $(DISCORD_CFLAGS) -fo=discord\main.obj discord\main.c
+
+discord\discord.obj: discord\discord.c discord\discord.h lib\screen.h
+	$(CC) $(DISCORD_CFLAGS) -fo=discord\discord.obj discord\discord.c
+
+discord\render_dc.obj: discord\render_dc.c discord\discord.h lib\screen.h
+	$(CC) $(DISCORD_CFLAGS) -fo=discord\render_dc.obj discord\render_dc.c
+
+discord\input_dc.obj: discord\input_dc.c discord\discord.h lib\screen.h
+	$(CC) $(DISCORD_CFLAGS) -fo=discord\input_dc.obj discord\input_dc.c
+
+discord\stub_discord.obj: discord\stub_discord.c discord\discord.h lib\screen.h
+	$(CC) $(DISCORD_CFLAGS) -fo=discord\stub_discord.obj discord\stub_discord.c
+
 clean: .SYMBOLIC
 	-del lib\*.obj
 	-del launcher\*.obj
 	-del cathode\*.obj
+	-del discord\*.obj
 	-del netisa.com
 	-del netisa.exe
 	-del netisa_hw.exe
 	-del cathode.exe
+	-del discord.exe
 	-del *.err
