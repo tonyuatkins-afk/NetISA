@@ -43,7 +43,12 @@ DISCORD_OBJS = discord\main.obj discord\discord.obj discord\render_dc.obj &
 
 DISCORD_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=discord
 
-all: tsr launcher cathode discord .SYMBOLIC
+CLAUDE_OBJS = claude\main.obj claude\claude.obj claude\chat.obj &
+	claude\compose.obj claude\agent.obj claude\stub_claude.obj
+
+CLAUDE_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=claude
+
+all: tsr launcher cathode discord claude .SYMBOLIC
 
 tsr: netisa.com .SYMBOLIC
 
@@ -52,6 +57,8 @@ launcher: netisa.exe .SYMBOLIC
 cathode: cathode.exe .SYMBOLIC
 
 discord: discord.exe .SYMBOLIC
+
+claude: claude.exe .SYMBOLIC
 
 launcher_hw: netisa_hw.exe .SYMBOLIC
 
@@ -168,14 +175,46 @@ discord\input_dc.obj: discord\input_dc.c discord\discord.h lib\screen.h
 discord\stub_discord.obj: discord\stub_discord.c discord\discord.h lib\screen.h
 	$(CC) $(DISCORD_CFLAGS) -fo=discord\stub_discord.obj discord\stub_discord.c
 
+# Claude client
+claude.exe: $(CLAUDE_OBJS) $(LIB_SCREEN)
+	$(LINKER) system dos name claude.exe &
+		file claude\main.obj &
+		file claude\claude.obj &
+		file claude\chat.obj &
+		file claude\compose.obj &
+		file claude\agent.obj &
+		file claude\stub_claude.obj &
+		file lib\screen.obj &
+		option quiet
+
+claude\main.obj: claude\main.c claude\claude.h lib\screen.h
+	$(CC) $(CLAUDE_CFLAGS) -fo=claude\main.obj claude\main.c
+
+claude\claude.obj: claude\claude.c claude\claude.h lib\screen.h
+	$(CC) $(CLAUDE_CFLAGS) -fo=claude\claude.obj claude\claude.c
+
+claude\chat.obj: claude\chat.c claude\claude.h lib\screen.h
+	$(CC) $(CLAUDE_CFLAGS) -fo=claude\chat.obj claude\chat.c
+
+claude\compose.obj: claude\compose.c claude\claude.h lib\screen.h
+	$(CC) $(CLAUDE_CFLAGS) -fo=claude\compose.obj claude\compose.c
+
+claude\agent.obj: claude\agent.c claude\claude.h lib\screen.h
+	$(CC) $(CLAUDE_CFLAGS) -fo=claude\agent.obj claude\agent.c
+
+claude\stub_claude.obj: claude\stub_claude.c claude\claude.h lib\screen.h
+	$(CC) $(CLAUDE_CFLAGS) -fo=claude\stub_claude.obj claude\stub_claude.c
+
 clean: .SYMBOLIC
 	-del lib\*.obj
 	-del launcher\*.obj
 	-del cathode\*.obj
 	-del discord\*.obj
+	-del claude\*.obj
 	-del netisa.com
 	-del netisa.exe
 	-del netisa_hw.exe
 	-del cathode.exe
 	-del discord.exe
+	-del claude.exe
 	-del *.err

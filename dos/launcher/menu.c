@@ -5,16 +5,18 @@
 #include "screen.h"
 #include "netisa.h"
 #include "menu.h"
+#include <stdlib.h>
 
 /* Forward declarations for panels */
 extern void panel_wifi(void);
 extern void panel_status(void);
 
-#define MENU_ITEMS  3
+#define MENU_ITEMS  4
 
 static const char *menu_labels[MENU_ITEMS] = {
     "WiFi Setup",
     "Card Status",
+    "Claude",
     "About"
 };
 
@@ -129,6 +131,12 @@ void menu_run(void)
                 draw_frame();
                 break;
             case 2:
+                scr_shutdown();
+                system("claude.exe");
+                scr_init();
+                draw_frame();
+                break;
+            case 3:
                 draw_about();
                 draw_frame();
                 break;
