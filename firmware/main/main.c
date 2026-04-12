@@ -41,6 +41,7 @@
 #include "cmd_handler.h"
 #include "nv_config.h"
 #include "wifi_mgr.h"
+#include "http_client.h"
 #include "web_config.h"
 
 static const char *TAG = "netisa";

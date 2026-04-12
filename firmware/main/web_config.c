@@ -250,7 +250,8 @@ static esp_err_t status_handler(httpd_req_t *req)
         wifi_mgr_get_info(ssid, &ip, &rssi);
         cJSON_AddStringToObject(root, "ssid", ssid);
         snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d",
-                 ip & 0xFF, (ip >> 8) & 0xFF, (ip >> 16) & 0xFF, (ip >> 24) & 0xFF);
+                 (int)(ip & 0xFF), (int)((ip >> 8) & 0xFF),
+                 (int)((ip >> 16) & 0xFF), (int)((ip >> 24) & 0xFF));
         cJSON_AddStringToObject(root, "ip", ip_str);
         cJSON_AddNumberToObject(root, "rssi", rssi);
     }

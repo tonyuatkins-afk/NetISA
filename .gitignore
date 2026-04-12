@@ -29,6 +29,11 @@ phase0/firmware/sdkconfig
 phase0/firmware/sdkconfig.old
 phase0/firmware/managed_components/
 phase0/firmware/dependencies.lock
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+firmware/dependencies.lock
 
 # DOS build output
 *.com

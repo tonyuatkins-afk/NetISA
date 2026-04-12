@@ -7,6 +7,7 @@
 #   launcher  - Build NETISA.EXE (launcher)
 #   test      - Build phase0/dos/nisatest.com
 #   sim       - Run iverilog testbench
+#   firmware  - Build ESP32-S3 firmware (ESP-IDF)
 #   clean     - Remove build artifacts
 
 NASM = nasm
@@ -29,6 +30,9 @@ cathode: .SYMBOLIC
 
 discord: .SYMBOLIC
 	cd dos && wmake -f Makefile discord
+
+firmware: .SYMBOLIC
+	C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe firmware\build_idf.py build
 
 test: phase0\dos\nisatest.com .SYMBOLIC
 
