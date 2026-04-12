@@ -18,7 +18,7 @@
 #define DC_MAX_AUTHOR_LEN   16
 #define DC_MAX_CHAN_NAME     20
 #define DC_MAX_SERVER_NAME  24
-#define DC_MAX_COMPOSE      160
+#define DC_MAX_COMPOSE      77
 
 /* Focus states */
 #define DC_FOCUS_CHANNELS   0
@@ -76,6 +76,7 @@ typedef struct {
     int focus;
     dc_compose_t compose;
     int running;
+    int dirty;          /* screen needs redraw */
     unsigned long last_poll_tick;
 } dc_state_t;
 

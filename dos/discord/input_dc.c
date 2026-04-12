@@ -155,6 +155,7 @@ void dc_handle_key(dc_state_t *s, int key)
             switch (scan) {
             case KEY_PGUP:
                 s->msg_scroll += DC_CONTENT_ROWS;
+                /* Upper bound clamped by dc_render_messages() */
                 break;
             case KEY_PGDN:
                 s->msg_scroll -= DC_CONTENT_ROWS;

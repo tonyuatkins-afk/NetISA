@@ -92,8 +92,10 @@ void stub_load_server(dc_state_t *s)
     strncpy(s->server_name, "Retro Computing Hub", DC_MAX_SERVER_NAME - 1);
     s->channel_count = 6;
 
-    /* Allocate per-channel far message pools */
+    /* Allocate per-channel far message pools.
+     * Guard: alloc_size must fit in 16-bit size_t for _fmalloc. */
     alloc_size = (unsigned long)DC_MAX_MESSAGES * sizeof(dc_message_t);
+    if (alloc_size > 65535UL) return; /* Overflow: struct too large for _fmalloc */
     for (i = 0; i < DC_MAX_CHANNELS; i++) {
         chan_msg_count[i] = 0;
         chan_msgs[i] = (dc_message_t far *)_fmalloc((unsigned)alloc_size);
@@ -180,6 +182,9 @@ static const char *timed_msgs[] = {
 #define NUM_TIMED 10
 static int ti_msg = 0, ti_auth = 0;
 
+/* NOTE: BIOS tick counter wraps at midnight. The unsigned subtraction
+ * (now - last_poll_tick) will produce a large value on wrap, causing one
+ * spurious immediate injection. Acceptable for stub testing. */
 void stub_inject_timed_message(dc_state_t *s)
 {
     unsigned long now;
@@ -208,21 +213,37 @@ void stub_inject_timed_message(dc_state_t *s)
         ts[5] = '\0';
     }
 
-    /* Add to #general internal storage */
-    if (chan_msg_count[0] < DC_MAX_MESSAGES) {
-        add_msg(0, timed_authors[ti_auth], timed_msgs[ti_msg], ts,
-                author_colors[ti_auth], 0);
+    /* Add to #general internal storage, dropping oldest if full */
+    if (chan_msg_count[0] >= DC_MAX_MESSAGES) {
+        int j;
+        for (j = 0; j < DC_MAX_MESSAGES - 1; j++)
+            _fmemcpy((void far *)&chan_msgs[0][j],
+                     (void far *)&chan_msgs[0][j + 1],
+                     sizeof(dc_message_t));
+        chan_msg_count[0] = DC_MAX_MESSAGES - 1;
+    }
+    add_msg(0, timed_authors[ti_auth], timed_msgs[ti_msg], ts,
+            author_colors[ti_auth], 0);
 
-        /* If viewing #general, also add to active buffer */
-        if (s->selected_channel == 0 && s->msg_count < DC_MAX_MESSAGES) {
+    /* If viewing #general, also update the active buffer */
+    if (s->selected_channel == 0) {
+        if (s->msg_count >= DC_MAX_MESSAGES) {
+            memmove(&s->messages[0], &s->messages[1],
+                    (DC_MAX_MESSAGES - 1) * sizeof(dc_message_t));
+            s->msg_count = DC_MAX_MESSAGES - 1;
+            /* Keep scroll position stable after shift */
+            if (s->msg_scroll > 0) s->msg_scroll--;
+        }
+        {
             dc_message_t far *src = &chan_msgs[0][chan_msg_count[0] - 1];
             _fmemcpy((void far *)&s->messages[s->msg_count],
                      (void far *)src, sizeof(dc_message_t));
             s->msg_count++;
         }
-
-        if (s->selected_channel != 0)
-            s->channels[0].unread = 1;
+        s->dirty = 1;
+    } else {
+        s->channels[0].unread = 1;
+        s->dirty = 1;
     }
 
     ti_msg = (ti_msg + 1) % NUM_TIMED;

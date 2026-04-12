@@ -73,7 +73,7 @@ static int msg_lines(dc_message_t *m, int width)
 {
     int prefix_len = 6 + (int)strlen(m->author) + 2;
     int text_len = (int)strlen(m->text);
-    int first_w = width - prefix_len;
+    int first_w = width - prefix_len;  /* width is DC_MSG_WIDTH */
     int lines, remaining;
 
     if (first_w <= 0) first_w = 1;
@@ -97,7 +97,7 @@ static int render_msg(dc_message_t *m, int y, int max_rows)
 
     if (max_rows <= 0) return 0;
 
-    x = DC_MSG_LEFT + 1;
+    x = DC_MSG_LEFT;
     scr_putsn(x, y, m->timestamp, 5, ATTR_TIMESTAMP);
     x += 6;
 
@@ -107,8 +107,8 @@ static int render_msg(dc_message_t *m, int y, int max_rows)
     scr_puts(x, y, ": ", ATTR_MSG_TEXT);
     x += 2;
 
-    prefix_len = x - (DC_MSG_LEFT + 1);
-    first_w = DC_MSG_WIDTH - 1 - prefix_len;
+    prefix_len = x - DC_MSG_LEFT;
+    first_w = DC_MSG_WIDTH - prefix_len;
     if (first_w <= 0) first_w = 1;
 
     text_len = (int)strlen(m->text);
@@ -123,7 +123,7 @@ static int render_msg(dc_message_t *m, int y, int max_rows)
     }
 
     line = 1;
-    cont_w = DC_MSG_WIDTH - 1 - prefix_len;
+    cont_w = DC_MSG_WIDTH - prefix_len;
     if (cont_w <= 0) cont_w = 1;
 
     /* Continuation lines */
@@ -132,9 +132,7 @@ static int render_msg(dc_message_t *m, int y, int max_rows)
         if (len > cont_w) len = cont_w;
         y++;
         line++;
-        scr_fill(DC_MSG_LEFT + 1, y, DC_MSG_WIDTH - 1, 1, ' ',
-                 SCR_ATTR(SCR_BLACK, SCR_BLACK));
-        scr_putsn(DC_MSG_LEFT + 1 + prefix_len, y,
+        scr_putsn(DC_MSG_LEFT + prefix_len, y,
                   m->text + text_pos, len, ATTR_MSG_TEXT);
         text_pos += len;
     }
@@ -147,39 +145,43 @@ void dc_render_messages(dc_state_t *s)
     int total_lines = 0;
     int i, y, start_msg, lines_before;
 
-    scr_fill(DC_MSG_LEFT + 1, DC_CONTENT_TOP, DC_MSG_WIDTH - 1,
+    scr_fill(DC_MSG_LEFT, DC_CONTENT_TOP, DC_MSG_WIDTH,
              DC_CONTENT_ROWS, ' ', SCR_ATTR(SCR_BLACK, SCR_BLACK));
 
     if (s->msg_count == 0) {
-        scr_puts(DC_MSG_LEFT + 3, DC_CONTENT_TOP + 1,
+        scr_puts(DC_MSG_LEFT + 2, DC_CONTENT_TOP + 1,
                  "No messages yet.", ATTR_DIM);
         return;
     }
 
     /* Total display lines */
     for (i = 0; i < s->msg_count; i++)
-        total_lines += msg_lines(&s->messages[i], DC_MSG_WIDTH - 1);
+        total_lines += msg_lines(&s->messages[i], DC_MSG_WIDTH);
 
     /* Determine visible start line (bottom-aligned, scroll_pos lines up) */
     {
         int vis_start;
+
+        /* Clamp scroll BEFORE computing vis_start to avoid one-frame glitch */
+        if (total_lines > avail) {
+            if (s->msg_scroll > total_lines - avail)
+                s->msg_scroll = total_lines - avail;
+        } else {
+            s->msg_scroll = 0;
+        }
+        if (s->msg_scroll < 0)
+            s->msg_scroll = 0;
+
         if (total_lines <= avail) {
             vis_start = 0;
         } else {
             vis_start = total_lines - avail - s->msg_scroll;
-            if (vis_start < 0) vis_start = 0;
         }
-
-        /* Clamp scroll */
-        if (s->msg_scroll > total_lines - avail)
-            s->msg_scroll = total_lines - avail;
-        if (s->msg_scroll < 0)
-            s->msg_scroll = 0;
 
         lines_before = 0;
         start_msg = 0;
         for (i = 0; i < s->msg_count; i++) {
-            int ml = msg_lines(&s->messages[i], DC_MSG_WIDTH - 1);
+            int ml = msg_lines(&s->messages[i], DC_MSG_WIDTH);
             if (lines_before + ml > vis_start) {
                 start_msg = i;
                 break;
@@ -192,9 +194,6 @@ void dc_render_messages(dc_state_t *s)
     y = DC_CONTENT_TOP;
     for (i = start_msg; i < s->msg_count && y <= DC_CONTENT_BOT; i++) {
         int rows_left = DC_CONTENT_BOT - y + 1;
-        scr_fill(DC_MSG_LEFT + 1, y, DC_MSG_WIDTH - 1,
-                 rows_left < 3 ? rows_left : 3, ' ',
-                 SCR_ATTR(SCR_BLACK, SCR_BLACK));
         y += render_msg(&s->messages[i], y, rows_left);
     }
 }

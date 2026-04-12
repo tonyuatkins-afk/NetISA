@@ -23,6 +23,11 @@ void dc_init(dc_state_t *s)
     s->compose.buf[0] = '\0';
 
     stub_load_server(s);
+
+    /* Load initial channel messages (avoid dc_switch_channel which would
+       save the empty near buffer over channel 0's far storage first) */
+    stub_load_channel_msgs(s, 0);
+    s->dirty = 1;
 }
 
 void dc_switch_channel(dc_state_t *s, int channel_idx)
@@ -39,6 +44,7 @@ void dc_switch_channel(dc_state_t *s, int channel_idx)
 
     /* Load new channel's messages */
     stub_load_channel_msgs(s, channel_idx);
+    s->dirty = 1;
 }
 
 void dc_send_message(dc_state_t *s, const char *text)
@@ -48,7 +54,13 @@ void dc_send_message(dc_state_t *s, const char *text)
     char ts[6];
 
     if (!text || !text[0]) return;
-    if (s->msg_count >= DC_MAX_MESSAGES) return;
+
+    /* If pool is full, drop oldest message to make room */
+    if (s->msg_count >= DC_MAX_MESSAGES) {
+        memmove(&s->messages[0], &s->messages[1],
+                (DC_MAX_MESSAGES - 1) * sizeof(dc_message_t));
+        s->msg_count = DC_MAX_MESSAGES - 1;
+    }
 
     /* Build timestamp from BIOS ticks */
     _asm {
@@ -88,6 +100,7 @@ void dc_send_message(dc_state_t *s, const char *text)
 
     /* Scroll to bottom */
     s->msg_scroll = 0;
+    s->dirty = 1;
 }
 
 void dc_poll_messages(dc_state_t *s)
