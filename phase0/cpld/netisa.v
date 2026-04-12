@@ -154,6 +154,12 @@ wire is_reg0B = chip_sel & (reg_sel == 4'hB); // Session Capacity
 wire is_reg0C = chip_sel & (reg_sel == 4'hC); // Network Status
 wire is_reg0D = chip_sel & (reg_sel == 4'hD); // Signal Quality
 
+// PHASE 0 LIMITATION: cache_hit includes regs 0x06-0x0C but all share a
+// single isa_out_latch. Reads of these registers return stale data from the
+// last non-cached read, not their actual values. This is intentional for
+// Phase 0 loopback validation. v1 production will narrow cache_hit to reg
+// 0x00 only (Option C, see spec section 5.4.6).
+
 // Cached registers: served from CPLD latches, zero wait states
 wire cache_hit = is_reg00 | is_reg06 | is_reg07 | is_reg08 | is_reg09
                | is_reg0A | is_reg0B | is_reg0C;
@@ -402,6 +408,11 @@ assign PSTROBE = ~strobe_req;  // Active LOW, one CLK period (62.5ns)
 // =========================================================================
 // IOCS16# - 16-BIT SLOT SUPPORT
 // =========================================================================
+
+// PHASE 0 LIMITATION: IOCS16# is asserted for regs 0x04/0x05 but the ISA
+// data bus is only D[7:0]. The 16-bit data path (D[8:15], word latch, byte
+// steering) is a production PCB feature. Phase 0 validates IOCS16# control
+// logic only, on an 8-bit prototype card.
 
 wire iocs16_active = chip_sel & ~SLOT16_n & (is_reg04 | is_reg05);
 assign IOCS16_n = iocs16_active ? 1'b0 : 1'bz;
