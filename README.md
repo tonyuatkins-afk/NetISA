@@ -2,7 +2,20 @@
 
 **Bringing TLS 1.3 and the modern internet to vintage ISA PCs.**
 
+> **[barelybooting.com](https://barelybooting.com/)** &mdash; project page, build log, screenshots
+> &nbsp;&bull;&nbsp; [YouTube: @BarelyBooting](https://www.youtube.com/@BarelyBooting) &mdash; build videos
+> &nbsp;&bull;&nbsp; [Build log + RSS](https://barelybooting.com/log.html)
+
 NetISA is an open-source 8/16-bit ISA expansion card that gives IBM PC/XT/AT and 386/486 systems a first-class path to the modern internet. A Microchip ATF1508AS CPLD handles ISA bus timing deterministically; an Espressif ESP32-S3 handles WiFi, TLS 1.3, and the full TCP/IP stack using hardware-accelerated AES, SHA, RSA, and ECC. The host PC sees a register-mapped coprocessor and talks to it through a small DOS TSR — no proxy box, no serial bottleneck, no software crypto on the retro CPU.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![NetISA Discord client running in DOS, showing the #general channel of Retro Computing Hub with color-coded usernames, timestamps, and a compose bar](docs/img/discord.png) | ![Cathode text-mode web browser start page in DOS with ASCII art logo, quick links, and version 0.1](docs/img/cathode.png) |
+| Discord client for DOS | Cathode text-mode browser |
+| ![NetISA control panel WiFi setup screen showing scanned networks with signal strength bars, security type, and channel number](docs/img/wifi-setup.png) | ![NetISA control panel card status showing network info, firmware version, uptime, and system details](docs/img/card-status.png) |
+| WiFi network scanner | Card status and diagnostics |
 
 ## What this unlocks
 
@@ -280,10 +293,20 @@ discord\DISCORD.EXE     (launches Discord client)
 
 See [Phase 0 README](phase0/README.md) for hardware build instructions and wiring guide.
 
+## Community
+
+- **[barelybooting.com](https://barelybooting.com/)** — project page with specs, screenshots, and build log
+- **[YouTube: @BarelyBooting](https://www.youtube.com/@BarelyBooting)** — build videos and progress updates
+- **[GitHub Discussions](https://github.com/tonyuatkins-afk/NetISA/discussions)** — questions, ideas, feedback
+- **[Build log (RSS)](https://barelybooting.com/feed.xml)** — subscribe for milestone updates
+- **[r/retrobattlestations](https://www.reddit.com/r/retrobattlestations/)** — project posts and discussion
+- **[VOGONS](https://www.vogons.org/)** — vintage computing forum
+- **[Hackaday](https://hackaday.io/)** — project logs
+
 ## License
 
 MIT (software) / CERN-OHL-P (hardware). See [LICENSE](LICENSE).
 
 ## Author
 
-Tony Atkins ([@tonyuatkins-afk](https://github.com/tonyuatkins-afk))
+Tony Atkins ([@tonyuatkins-afk](https://github.com/tonyuatkins-afk)) — [barelybooting.com](https://barelybooting.com/about.html)
