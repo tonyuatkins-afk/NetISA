@@ -59,6 +59,7 @@ The specific thing that is new: an open-source, register-mapped ISA coprocessor 
 | Launcher (NETISA.EXE) | Complete | — | WiFi setup, card status, system info, full-screen CP437 UI |
 | **Cathode browser** | **v0.1** | **5 rounds** | Text-mode web browser: scrolling, link navigation, URL bar, stub pages |
 | **Discord client** | **v0.1** | **6 rounds** | Text-mode chat: channels, messages, compose, timed fake messages |
+| **Claude client** | **v0.1** | **2 rounds** | Claude AI chat with 3-mode agent system (Chat/Ask/Auto), command execution |
 | DOS loopback test | Complete | — | 256-byte bus validation (NISATEST.COM) |
 
 ### Next steps
@@ -148,6 +149,23 @@ Key features:
 DISCORD.EXE                     Launches Discord client
 ```
 
+## Claude for DOS
+
+A text-mode Claude AI chat client that talks to the Anthropic API over TLS 1.3 via the NetISA card. Includes a 3-mode agent system for running DOS commands directly from the conversation. Runs with stub responses for DOSBox-X testing.
+
+Key features:
+- Chat mode (conversation only), Ask mode (Claude proposes commands, you confirm), Auto mode (Claude runs commands freely)
+- Far-heap message pool for small memory model (30 messages, ~15KB)
+- Word-wrapped chat rendering with newline support
+- 3-line compose area with cursor editing
+- [EXEC] tag parsing for command execution with stdout capture
+- Iterative agent loop with 5-deep safety cap (no recursive stack growth)
+- Quality-gated: 2 rounds of adversarial review
+
+```
+CLAUDE.EXE                      Launches Claude client
+```
+
 ## Roadmap beyond DOS
 
 v1 ships as a DOS/Windows 3.x peripheral. The firmware and CPLD are deliberately architected so that native drivers for modern retro operating systems can land in future releases **without any hardware changes** — the ISA interface is a mode-agnostic byte shuttle, and new behavior lives entirely in ESP32 firmware and host-OS drivers.
@@ -171,6 +189,7 @@ The three driver modes are specified in [docs/netisa-architecture-spec.md](docs/
 - **Launcher** (NETISA.EXE) — Full-screen card configuration UI
 - **Cathode** (CATHODE.EXE) — Text-mode web browser
 - **Discord** (DISCORD.EXE) — Text-mode chat client
+- **Claude** (CLAUDE.EXE) — Claude AI chat client with agent mode
 - **Screen library** (screen.h/screen.c) — Shared VGA rendering engine
 - **INT 63h API** (netisa.h) — C wrappers for all API groups (0x00-0x07)
 - **Stub layer** (netisa_stub.c) — Fake data for DOSBox-X testing
@@ -226,6 +245,14 @@ dos/
     render_dc.c                    Message renderer with word wrap
     input_dc.c                     Keyboard handler, focus cycling
     stub_discord.c                 Fake channels, messages, timed injection
+  claude/
+    main.c                         Claude client entry point
+    claude.h                       Types, constants, prototypes
+    claude.c                       Chat state machine, agent mode, key dispatch
+    chat.c                         Chat history renderer with word wrap
+    compose.c                      3-line compose area with cursor editing
+    agent.c                        [EXEC] tag parser, command execution
+    stub_claude.c                  Keyword-based stub responses with delay
   Makefile                         Builds all DOS software
 
 phase0/
@@ -268,6 +295,7 @@ make tsr          # Build NETISA.COM only
 make launcher     # Build NETISA.EXE only
 make cathode      # Build CATHODE.EXE only
 make discord      # Build DISCORD.EXE only
+make claude       # Build CLAUDE.EXE only
 make test         # Build phase0/dos/nisatest.com
 make sim          # Run iverilog testbench (160 tests)
 
@@ -289,6 +317,7 @@ NETISA.COM              (prints "already resident")
 NETISA.EXE              (launches card control panel)
 cathode\CATHODE.EXE     (launches text-mode browser)
 discord\DISCORD.EXE     (launches Discord client)
+claude\CLAUDE.EXE       (launches Claude AI client)
 ```
 
 See [Phase 0 README](phase0/README.md) for hardware build instructions and wiring guide.
