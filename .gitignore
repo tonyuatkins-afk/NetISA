@@ -36,6 +36,7 @@ phase0/firmware/dependencies.lock
 *.map
 *.lst
 *.exe
+*.err
 
 # KiCad
 *.kicad_prl
