@@ -150,7 +150,9 @@ int ni_wifi_scan(ni_wifi_network_t *list, int max_networks)
         push di
         mov ah, NI_GRP_NETCFG
         mov al, NI_NET_SCAN
-        les di, list
+        push ds
+        pop es
+        mov di, list
         mov cx, bufsz
         int NI_INT_VECTOR
         jc  _fail
@@ -175,29 +177,21 @@ int ni_wifi_connect(const char *ssid, const char *password)
 {
     uint16_t err;
 
-    /* Set SSID */
+    /* Set SSID (small model: DS already correct, use near pointer) */
     _asm {
-        push ds
-        push si
         mov ah, NI_GRP_NETCFG
         mov al, NI_NET_SET_SSID
-        lds si, ssid
+        mov si, ssid
         int NI_INT_VECTOR
-        pop si
-        pop ds
         jc  _fail
     }
 
     /* Set password */
     _asm {
-        push ds
-        push si
         mov ah, NI_GRP_NETCFG
         mov al, NI_NET_SET_PASS
-        lds si, password
+        mov si, password
         int NI_INT_VECTOR
-        pop si
-        pop ds
         jc  _fail
     }
 
@@ -266,15 +260,11 @@ int ni_session_open(const char *hostname, uint16_t port, uint8_t *handle)
     uint8_t h;
 
     _asm {
-        push ds
-        push si
         mov ah, NI_GRP_SESSION
         mov al, NI_SESS_OPEN
-        lds si, hostname
+        mov si, hostname
         mov bx, port
         int NI_INT_VECTOR
-        pop si
-        pop ds
         jc  _fail
         mov h, al
         xor ax, ax
@@ -294,7 +284,7 @@ int ni_session_close(uint8_t handle)
     _asm {
         mov ah, NI_GRP_SESSION
         mov al, NI_SESS_CLOSE
-        mov al, handle
+        mov bl, handle
         int NI_INT_VECTOR
         jc  _fail
         xor ax, ax
@@ -312,7 +302,7 @@ int ni_session_send(uint8_t handle, const char far *buf, uint16_t len)
         push si
         mov ah, NI_GRP_SESSION
         mov al, NI_SESS_SEND
-        mov al, handle
+        mov bl, handle
         lds si, buf
         mov cx, len
         int NI_INT_VECTOR
@@ -336,7 +326,7 @@ int ni_session_recv(uint8_t handle, char far *buf, uint16_t bufsize,
         push di
         mov ah, NI_GRP_SESSION
         mov al, NI_SESS_RECV
-        mov al, handle
+        mov bl, handle
         les di, buf
         mov cx, bufsize
         int NI_INT_VECTOR
@@ -366,7 +356,9 @@ int ni_rng_get(uint8_t *buf, uint16_t len)
         push di
         mov ah, NI_GRP_CRYPTO
         mov al, NI_CRYPTO_RANDOM
-        les di, buf
+        push ds
+        pop es
+        mov di, buf
         mov cx, len
         int NI_INT_VECTOR
         pop di

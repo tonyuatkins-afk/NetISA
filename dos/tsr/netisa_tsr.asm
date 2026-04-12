@@ -21,7 +21,6 @@
 
 INT_VECTOR      equ 0x63
 SIGNATURE       equ 0x4352      ; 'CR' for presence check
-SIG_STRING      db  'NETISA10'  ; 8-byte signature for scanning
 SIG_LEN         equ 8
 
 FW_MAJOR        equ 1
@@ -41,6 +40,7 @@ start:
 
 resident_start:
 
+SIG_STRING      db  'NETISA10'  ; 8-byte signature for scanning (after jmp)
 old_int63       dd  0           ; Saved original INT 63h vector
 base_addr       dw  0x280       ; Card base I/O address (configurable)
 
@@ -216,19 +216,28 @@ int63_handler:
     iret
 
 .diag_uptime:
-    ; Return BIOS ticks / 18 as seconds
+    ; Return BIOS ticks / 18 as seconds in DX:AX (32-bit result)
+    ; INT 1Ah returns CX:DX = 32-bit tick count (~18.2 ticks/sec)
+    ; Two-stage 16-bit divide avoids overflow on 8088:
+    ;   Step 1: 0:high_word / 18 -> high quotient + remainder
+    ;   Step 2: remainder:low_word / 18 -> low quotient
+    push    bx
     push    cx
     xor     ax, ax
-    int     0x1A                ; CX:DX = tick count
-    ; Convert to seconds: ticks / 18 (approximate)
-    ; DX:AX = CX:DX (32-bit tick count)
-    mov     ax, dx
-    mov     dx, cx
-    ; Divide DX:AX by 18
-    mov     cx, 18
-    div     cx                  ; AX = quotient, DX = remainder
-    xor     dx, dx              ; High word = 0 for now
+    int     0x1A                ; CX:DX = tick count (CX=high, DX=low)
+    push    dx                  ; save low word of ticks
+    mov     ax, cx              ; AX = high word of ticks
+    xor     dx, dx              ; DX:AX = 0:high_ticks
+    mov     bx, 18
+    div     bx                  ; AX = high quotient, DX = remainder
+    mov     cx, ax              ; CX = high quotient (saved)
+    pop     ax                  ; AX = low word of ticks
+    ; DX = remainder from high divide (still set from div above)
+    div     bx                  ; DX:AX / 18 -> AX = low quotient
+    mov     dx, cx              ; DX = high quotient
+    ; Result: DX:AX = uptime in seconds
     pop     cx
+    pop     bx
     clc
     pop     bp
     iret
@@ -314,7 +323,10 @@ install:
     sub     dx, start           ; Offset from ORG
     add     dx, 0x100           ; Add PSP size (256 bytes)
     add     dx, 15
-    shr     dx, 4               ; Convert to paragraphs
+    shr     dx, 1               ; Convert to paragraphs (4x shr for 8088)
+    shr     dx, 1
+    shr     dx, 1
+    shr     dx, 1
     mov     ax, 0x3100          ; TSR, exit code 0
     int     0x21
 
@@ -371,7 +383,10 @@ parse_cmdline:
 .cmd_09:
     sub     al, '0'
 .cmd_add:
-    shl     bx, 4
+    shl     bx, 1               ; 4x shl for 8088 compatibility
+    shl     bx, 1
+    shl     bx, 1
+    shl     bx, 1
     xor     ah, ah
     add     bx, ax
     jmp     .cmd_hex

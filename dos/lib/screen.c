@@ -178,11 +178,21 @@ int scr_getkey(void)
 
 int scr_kbhit(void)
 {
-    union REGS r;
-    r.h.ah = 0x01;
-    int86(0x16, &r, &r);
-    /* ZF set = no key available */
-    return !(r.w.cflag & 0x40);  /* check ZF via flags */
+    unsigned char result;
+    /* INT 16h AH=01h: ZF=1 if no key, ZF=0 if key ready.
+     * OpenWatcom's int86 cflag only captures CF, not ZF.
+     * Use inline asm to check ZF directly. */
+    _asm {
+        mov ah, 01h
+        int 16h
+        jnz _has_key
+        mov result, 0
+        jmp _done
+    _has_key:
+        mov result, 1
+    _done:
+    }
+    return result;
 }
 
 void scr_cursor_hide(void)

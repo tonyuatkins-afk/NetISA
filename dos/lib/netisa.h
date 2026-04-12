@@ -79,9 +79,20 @@ typedef signed long    int32_t;
 #define NI_SESS_SETOPT          0x06  /* Set session option */
 #define NI_SESS_OPEN_PLAIN      0x07  /* Open plaintext session */
 
+/* Group 0x04: Certificate Management (reserved for v1.5) */
+#define NI_CERT_STORE_INFO      0x00  /* Get cert store info */
+#define NI_CERT_RELOAD          0x01  /* Reload certs from SD */
+#define NI_CERT_LAST_ERROR      0x02  /* Get last cert error */
+#define NI_CERT_PEER_INFO       0x03  /* Get peer cert info */
+
 /* Group 0x05: Raw Crypto */
 #define NI_CRYPTO_SHA256        0x00
 #define NI_CRYPTO_RANDOM        0x0B
+
+/* Group 0x06: Asynchronous Events (reserved for v1.5) */
+#define NI_EVENT_GET_PENDING    0x00  /* Get pending events */
+#define NI_EVENT_SET_CALLBACK   0x01  /* Set callback mode */
+#define NI_EVENT_ACK            0x02  /* Acknowledge event */
 
 /* Group 0x07: Diagnostics */
 #define NI_DIAG_UPTIME          0x00

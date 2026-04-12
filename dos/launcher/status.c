@@ -48,7 +48,10 @@ static const char *detect_cpu(void)
     return "80386+";
 }
 
-/* Detect FPU */
+/* Detect FPU using Intel's standard method (AP-485):
+ * FNINIT resets FPU status word to 0. If no FPU is present, the bus
+ * cycle is ignored and the test word remains at the sentinel value.
+ * FNSTSW stores the status word; if it reads back as 0, an FPU responded. */
 static int detect_fpu(void)
 {
     unsigned short status;

@@ -212,6 +212,9 @@ static void do_connect(int idx)
 
     err = ni_wifi_connect(networks[idx].ssid, password);
 
+    /* Zero password from stack */
+    memset(password, 0, sizeof(password));
+
     scr_fill(4, LIST_TOP + LIST_HEIGHT + 1, 74, 1, ' ', ATTR_NORMAL);
     if (err == NI_OK) {
         scr_puts(4, LIST_TOP + LIST_HEIGHT + 1,
