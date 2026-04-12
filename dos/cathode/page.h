@@ -28,8 +28,8 @@ typedef struct {
 } page_cell_t;
 
 /* Link table entry */
-#define LINK_URL_MAX    128
-#define MAX_LINKS       64
+#define LINK_URL_MAX    96
+#define MAX_LINKS       32
 
 typedef struct {
     char url[LINK_URL_MAX];
@@ -55,7 +55,7 @@ typedef struct {
 } page_buffer_t;
 
 /* Access helpers (inline row*80+col indexing) */
-#define PAGE_IDX(row, col)  ((unsigned long)(row) * PAGE_COLS + (col))
+#define PAGE_IDX(row, col)  ((unsigned int)(row) * PAGE_COLS + (col))
 
 /* Page buffer management */
 page_buffer_t *page_alloc(void);

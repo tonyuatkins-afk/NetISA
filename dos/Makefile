@@ -114,25 +114,25 @@ cathode.exe: $(CATHODE_OBJS) $(LIB_SCREEN) $(LIB_STUB)
 		file lib\netisa_stub.obj &
 		option quiet
 
-cathode\main.obj: cathode\main.c cathode\browser.h cathode\render.h cathode\input.h
+cathode\main.obj: cathode\main.c cathode\browser.h cathode\render.h cathode\input.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\main.obj cathode\main.c
 
-cathode\browser.obj: cathode\browser.c cathode\browser.h cathode\stub_pages.h
+cathode\browser.obj: cathode\browser.c cathode\browser.h cathode\stub_pages.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\browser.obj cathode\browser.c
 
-cathode\render.obj: cathode\render.c cathode\render.h cathode\page.h
+cathode\render.obj: cathode\render.c cathode\render.h cathode\page.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\render.obj cathode\render.c
 
-cathode\input.obj: cathode\input.c cathode\input.h cathode\browser.h
+cathode\input.obj: cathode\input.c cathode\input.h cathode\browser.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\input.obj cathode\input.c
 
-cathode\page.obj: cathode\page.c cathode\page.h
+cathode\page.obj: cathode\page.c cathode\page.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\page.obj cathode\page.c
 
-cathode\urlbar.obj: cathode\urlbar.c cathode\urlbar.h
+cathode\urlbar.obj: cathode\urlbar.c cathode\urlbar.h cathode\input.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\urlbar.obj cathode\urlbar.c
 
-cathode\stub_pages.obj: cathode\stub_pages.c cathode\stub_pages.h cathode\page.h
+cathode\stub_pages.obj: cathode\stub_pages.c cathode\stub_pages.h cathode\page.h cathode\render.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\stub_pages.obj cathode\stub_pages.c
 
 clean: .SYMBOLIC

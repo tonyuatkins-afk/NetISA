@@ -24,7 +24,7 @@ void browser_shutdown(browser_state_t *b)
 {
     if (b->current_page) {
         page_free(b->current_page);
-        b->current_page = (page_buffer_t far *)0;
+        b->current_page = (page_buffer_t *)0;
     }
 }
 
@@ -44,16 +44,22 @@ void browser_navigate(browser_state_t *b, const char *url)
     /* Add to history */
     if (b->history_pos < HISTORY_MAX - 1) {
         b->history_pos++;
-        strncpy(b->history[b->history_pos], url, 255);
-        b->history[b->history_pos][255] = '\0';
-        b->history_count = b->history_pos + 1;
+    } else {
+        /* History full: shift left, keep last slot */
+        memmove(b->history[0], b->history[1],
+                (unsigned)(HISTORY_MAX - 1) * 256u);
+        /* history_pos stays at HISTORY_MAX - 1 */
     }
+    strncpy(b->history[b->history_pos], url, 255);
+    b->history[b->history_pos][255] = '\0';
+    b->history_count = b->history_pos + 1;
 
     b->status_msg[0] = '\0';
 }
 
 void browser_back(browser_state_t *b)
 {
+    if (!b->current_page) return;
     if (b->history_pos > 0) {
         b->history_pos--;
         stub_fetch_page(b->history[b->history_pos], b->current_page);
@@ -63,6 +69,7 @@ void browser_back(browser_state_t *b)
 
 void browser_forward(browser_state_t *b)
 {
+    if (!b->current_page) return;
     if (b->history_pos < b->history_count - 1) {
         b->history_pos++;
         stub_fetch_page(b->history[b->history_pos], b->current_page);
@@ -72,6 +79,7 @@ void browser_forward(browser_state_t *b)
 
 void browser_reload(browser_state_t *b)
 {
+    if (!b->current_page) return;
     if (b->history_pos >= 0) {
         strcpy(b->status_msg, "Reloading...");
         stub_fetch_page(b->history[b->history_pos], b->current_page);
@@ -145,11 +153,16 @@ void browser_select_link(browser_state_t *b, int delta)
 void browser_follow_link(browser_state_t *b)
 {
     int sel;
+    char url_copy[LINK_URL_MAX];
+
     if (!b->current_page)
         return;
     sel = b->current_page->selected_link;
     if (sel < 0 || sel >= b->current_page->link_count)
         return;
 
-    browser_navigate(b, b->current_page->links[sel].url);
+    /* Copy URL before navigate, which calls page_clear and destroys it */
+    strncpy(url_copy, b->current_page->links[sel].url, LINK_URL_MAX - 1);
+    url_copy[LINK_URL_MAX - 1] = '\0';
+    browser_navigate(b, url_copy);
 }

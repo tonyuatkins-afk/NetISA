@@ -6,6 +6,7 @@
 #define RENDER_H
 
 #include "page.h"
+#include "screen.h"
 
 /* Cathode-specific attributes (extending screen.h design language) */
 #define ATTR_LINK       SCR_ATTR(SCR_LIGHTCYAN, SCR_BLACK)

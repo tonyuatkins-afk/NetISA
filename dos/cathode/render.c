@@ -24,7 +24,7 @@ void render_page(page_buffer_t *page)
                 /* Highlight links */
                 if (type == CELL_LINK) {
                     unsigned short lid = page_get_linkid(page, prow, col);
-                    if ((int)lid == sel)
+                    if (sel >= 0 && lid == (unsigned short)sel)
                         attr = ATTR_LINK_SEL;
                     else
                         attr = ATTR_LINK;
@@ -55,8 +55,9 @@ void render_urlbar(const char *url, int editing, int cursor_pos)
     scr_putsn(1, LAYOUT_URL_ROW, url, PAGE_COLS - 2, ATTR_INPUT);
 
     if (editing) {
+        int cpos = (cursor_pos < PAGE_COLS - 2) ? cursor_pos : PAGE_COLS - 2;
         scr_cursor_show();
-        scr_cursor_pos(1 + cursor_pos, LAYOUT_URL_ROW);
+        scr_cursor_pos(1 + cpos, LAYOUT_URL_ROW);
     } else {
         scr_cursor_hide();
     }

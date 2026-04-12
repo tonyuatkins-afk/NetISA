@@ -4,6 +4,7 @@
 
 #include "urlbar.h"
 #include "screen.h"
+#include "input.h"
 #include <string.h>
 
 void urlbar_init(urlbar_t *u)
@@ -73,13 +74,13 @@ int urlbar_handle_key(urlbar_t *u, int key)
         case KEY_RIGHT:
             if (u->cursor < u->len) u->cursor++;
             break;
-        case 0x4700: /* Home */
+        case KEY_HOME:
             u->cursor = 0;
             break;
-        case 0x4F00: /* End */
+        case KEY_END:
             u->cursor = u->len;
             break;
-        case 0x5300: /* Delete */
+        case KEY_DELETE:
             if (u->cursor < u->len) {
                 int i;
                 for (i = u->cursor; i < u->len - 1; i++)

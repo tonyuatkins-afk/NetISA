@@ -11,7 +11,7 @@
 #define HISTORY_MAX 20
 
 typedef struct {
-    page_buffer_t far *current_page;
+    page_buffer_t *current_page;
     char history[HISTORY_MAX][256];
     int history_pos;
     int history_count;

@@ -18,7 +18,8 @@ void input_handle_key(browser_state_t *b, int key)
             browser_navigate(b, b->urlbar.buf);
         } else if (result == -1) {
             /* Escape: cancel, restore URL */
-            urlbar_cancel_edit(&b->urlbar, b->current_page->url);
+            if (b->current_page)
+                urlbar_cancel_edit(&b->urlbar, b->current_page->url);
         }
         return;
     }
@@ -61,7 +62,8 @@ void input_handle_key(browser_state_t *b, int key)
             browser_scroll_to(b, 0);
             break;
         case KEY_END:
-            browser_scroll_to(b, b->current_page->total_rows - PAGE_VIEWPORT);
+            if (b->current_page)
+                browser_scroll_to(b, b->current_page->total_rows - PAGE_VIEWPORT);
             break;
         case KEY_F5:
             browser_reload(b);

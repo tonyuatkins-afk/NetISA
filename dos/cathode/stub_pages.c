@@ -26,8 +26,16 @@ static void put_link(page_buffer_t *p, int row, int col,
                      const char *text, const char *url)
 {
     int sc = col;
-    unsigned short lid = (unsigned short)p->link_count;
+    unsigned short lid;
     const char *t = text;
+
+    /* If link table is full, render as plain text instead of ghost link */
+    if (p->link_count >= MAX_LINKS) {
+        put_str(p, row, col, text, ATTR_NORMAL, CELL_TEXT);
+        return;
+    }
+
+    lid = (unsigned short)p->link_count;
 
     page_set_cell(p, row, col, '[', ATTR_LINK, CELL_LINK, lid);
     col++;
@@ -395,5 +403,5 @@ int stub_fetch_page(const char *url, page_buffer_t *page)
     }
 
     build_error(page, url);
-    return 0;
+    return -1;
 }

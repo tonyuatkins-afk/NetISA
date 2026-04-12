@@ -7,7 +7,6 @@
  */
 
 #include "screen.h"
-#include "netisa.h"
 #include "browser.h"
 #include "render.h"
 #include "input.h"
@@ -16,7 +15,7 @@
 
 int main(int argc, char *argv[])
 {
-    browser_state_t b;
+    static browser_state_t b;
     const char *start_url;
 
     /* Determine start URL */

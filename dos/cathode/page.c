@@ -11,7 +11,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define TOTAL_CELLS ((unsigned long)PAGE_MAX_ROWS * PAGE_COLS)
+#define TOTAL_CELLS ((unsigned int)PAGE_MAX_ROWS * PAGE_COLS)
 
 page_buffer_t *page_alloc(void)
 {
@@ -19,6 +19,7 @@ page_buffer_t *page_alloc(void)
 
     p = (page_buffer_t *)malloc(sizeof(page_buffer_t));
     if (!p) return (page_buffer_t *)0;
+    memset(p, 0, sizeof(page_buffer_t));
 
     /* Allocate far arrays separately */
     p->cells = (page_cell_t far *)_fmalloc(TOTAL_CELLS * sizeof(page_cell_t));
@@ -45,7 +46,7 @@ void page_free(page_buffer_t *page)
 
 void page_clear(page_buffer_t *page)
 {
-    unsigned long i;
+    unsigned int i;
 
     page->total_rows = 0;
     page->scroll_pos = 0;
@@ -54,11 +55,14 @@ void page_clear(page_buffer_t *page)
     page->link_count = 0;
     page->selected_link = -1;
 
+    /* Zero meta and linkmap with _fmemset (much faster on 8088) */
+    _fmemset(page->meta, CELL_TEXT, TOTAL_CELLS);
+    _fmemset(page->linkmap, 0, TOTAL_CELLS * sizeof(unsigned short));
+
+    /* Cells are 2-byte structs; loop is unavoidable for the pattern */
     for (i = 0; i < TOTAL_CELLS; i++) {
         page->cells[i].ch = ' ';
         page->cells[i].attr = ATTR_NORMAL;
-        page->meta[i] = CELL_TEXT;
-        page->linkmap[i] = 0;
     }
 }
 
@@ -66,7 +70,7 @@ void page_set_cell(page_buffer_t *page, int row, int col,
                    char ch, unsigned char attr, unsigned char type,
                    unsigned short link_id)
 {
-    unsigned long idx;
+    unsigned int idx;
     if (row < 0 || row >= PAGE_MAX_ROWS || col < 0 || col >= PAGE_COLS)
         return;
 
@@ -83,7 +87,13 @@ void page_set_cell(page_buffer_t *page, int row, int col,
 page_cell_t page_get_cell(page_buffer_t *page, int row, int col)
 {
     page_cell_t c;
-    unsigned long idx = PAGE_IDX(row, col);
+    unsigned int idx;
+    if (row < 0 || row >= PAGE_MAX_ROWS || col < 0 || col >= PAGE_COLS) {
+        c.ch = ' ';
+        c.attr = ATTR_NORMAL;
+        return c;
+    }
+    idx = PAGE_IDX(row, col);
     c.ch = page->cells[idx].ch;
     c.attr = page->cells[idx].attr;
     return c;
@@ -91,11 +101,15 @@ page_cell_t page_get_cell(page_buffer_t *page, int row, int col)
 
 unsigned char page_get_meta(page_buffer_t *page, int row, int col)
 {
+    if (row < 0 || row >= PAGE_MAX_ROWS || col < 0 || col >= PAGE_COLS)
+        return CELL_TEXT;
     return page->meta[PAGE_IDX(row, col)];
 }
 
 unsigned short page_get_linkid(page_buffer_t *page, int row, int col)
 {
+    if (row < 0 || row >= PAGE_MAX_ROWS || col < 0 || col >= PAGE_COLS)
+        return 0;
     return page->linkmap[PAGE_IDX(row, col)];
 }
 

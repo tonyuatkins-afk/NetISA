@@ -8,7 +8,7 @@ NetISA is an open-source 8/16-bit ISA expansion card that gives IBM PC/XT/AT and
 
 A retro PC with a NetISA card can, without a modern computer babysitting it:
 
-- **Browse the modern HTTPS web** from Lynx, Links, or Arachne — real TLS 1.3 sites including Wikipedia, GitHub, and news sites.
+- **Browse the modern HTTPS web** from Cathode (our built-in text-mode browser), Lynx, Links, or Arachne — real TLS 1.3 sites including Wikipedia, GitHub, and news sites.
 - **`git clone` over HTTPS** on a 486 against GitHub or any modern git host.
 - **Read Gmail / Outlook / Fastmail** from Pine, Pegasus, or mTCP mail clients (IMAPS, SMTPS).
 - **Post to Discord, Mastodon, Bluesky, Matrix, or IRC-over-TLS** (Libera.Chat and friends) via REST APIs or IRCS.
@@ -26,6 +26,55 @@ What NetISA does **not** unlock: modern graphical web browsing (CPU-bound regard
 
 The specific thing that is new: an open-source, register-mapped ISA coprocessor that terminates TLS 1.3 in hardware-accelerated silicon, with deterministic bus timing on a CPLD so the crypto engine never fights the bus cycle.
 
+## Status
+
+**Phase 0:** Parts ordered, awaiting hardware. All build artifacts ready to flash.
+**Phase 1:** DOS software stack complete and tested in DOSBox-X.
+
+### What's built
+
+| Component | Status | Description |
+|-----------|--------|-------------|
+| Architecture spec | Complete | 2,800+ line specification covering hardware, firmware, INT 63h API, security |
+| CPLD logic (Verilog) | Complete | 95/128 macrocells, full 16-bit I/O decode, JEDEC ready to program |
+| Verilog testbench | **160/160 passing** | Address decode, IOCHRDY, watchdog, IRQ, alias rejection, back-to-back cycles, and more |
+| ESP32-S3 firmware | Complete | Builds clean on ESP-IDF v5.5.4, parallel bus handler with ISR on Core 0 |
+| DOS TSR (NETISA.COM) | Complete | 678 bytes, hooks INT 63h, presence check, stub handlers |
+| Screen library | Complete | Direct VGA text buffer rendering, CP437 box drawing, shared across all apps |
+| INT 63h API (netisa.h) | Complete | Full API definition matching spec Section 4, C wrappers with inline INT 63h |
+| Stub layer | Complete | Fake data for DOSBox-X testing without hardware |
+| Launcher (NETISA.EXE) | Complete | WiFi setup, card status, system info, full-screen CP437 UI |
+| **Cathode browser** | **v0.1** | Text-mode web browser: scrolling, link navigation, URL bar, stub pages |
+| DOS loopback test | Complete | 256-byte bus validation (NISATEST.COM) |
+
+### Next steps
+
+1. Solder breakout boards, wire prototype, walk the 9-gate validation checklist
+2. Connect stub layer to real card I/O ports after Phase 0 hardware passes
+3. Build ESP32-side HTML-to-cell-stream renderer for Cathode
+4. Implement real TLS session management in TSR
+
+## Cathode: Text-Mode Web Browser
+
+Cathode is a built-in ANSI text-mode web browser that renders modern HTTPS websites in CP437 on any DOS machine from 8088 to Pentium. The browser is split between DOS and ESP32:
+
+- **DOS side** (built): receives a cell stream, manages scrollback, renders to VGA text buffer, handles keyboard navigation
+- **ESP32 side** (planned): fetches URLs over HTTPS, parses HTML, converts to (char, attr) cell stream
+
+Currently runs with stub pages for testing. Key features:
+- 200-row scrollback buffer on far heap (~80KB)
+- Link navigation via Tab/Shift-Tab with visual highlighting
+- URL bar editing (F6)
+- Back/forward history (20 entries)
+- CP437 box-drawing tables, bullet lists, headings, horizontal rules
+- Quality-gated: 5 rounds of adversarial review, all Fatal/Significant bugs fixed
+
+```
+CATHODE.EXE                     Start page
+CATHODE.EXE about:test          Feature test page
+CATHODE.EXE about:help          Keyboard shortcuts
+```
+
 ## Roadmap beyond DOS
 
 v1 ships as a DOS/Windows 3.x peripheral. The firmware and CPLD are deliberately architected so that native drivers for modern retro operating systems can land in future releases **without any hardware changes** — the ISA interface is a mode-agnostic byte shuttle, and new behavior lives entirely in ESP32 firmware and host-OS drivers.
@@ -36,21 +85,6 @@ v1 ships as a DOS/Windows 3.x peripheral. The firmware and CPLD are deliberately
 
 The three driver modes are specified in [docs/netisa-architecture-spec.md](docs/netisa-architecture-spec.md) section 2.6.1. v1 firmware already recognizes the `CMD_SET_MODE` opcode so that future host drivers probing for advanced-mode support receive a clean, defined error response rather than silent failure. The register map, CPLD logic, and electrical interface are forward-compatible with all three modes on day one.
 
-## Status
-
-**Phase 0: Parts ordered, awaiting hardware.**
-
-- Architecture specification complete (2,800+ lines)
-- CPLD logic: **95/128 macrocells (74%)**, full 16-bit I/O decode (A15-A0), fits EPM7128STC100-15 clean on Quartus II 13.0sp1
-- Verilog testbench: **160/160 passing** (iverilog) — covers address decode, IOCHRDY wait states, watchdog timeout, IRQ state machine, alias rejection, back-to-back cycles, mid-cycle reset, status flag merge, reserved-register pass-through, and more
-- JEDEC file generated via POF2JED, ready to program
-- ESP32-S3 firmware builds clean on ESP-IDF v5.5.4
-- DOS loopback test assembled
-- Reviewed by five AI reviewers
-- All build artifacts ready to flash
-
-Next step: solder breakout boards, wire prototype, walk the 9-gate validation checklist.
-
 ## Hardware
 
 - **Bus logic:** Microchip ATF1508AS CPLD (TQFP-100, 128 macrocells, 5V native, 10 ns)
@@ -60,30 +94,95 @@ Next step: solder breakout boards, wire prototype, walk the 9-gate validation ch
 
 ## Software
 
-- DOS TSR driver (~2 KB resident) providing INT 63h API
-- SDK: NETISA.H + NETISA.LIB (OpenWatcom) + NETISA_TC.LIB (Turbo C)
-- PC/TCP Packet Driver for mTCP/WATTCP compatibility (v1.5)
+- **DOS TSR** (NETISA.COM) — 678-byte INT 63h handler, under 2KB resident target
+- **Launcher** (NETISA.EXE) — Full-screen card configuration UI
+- **Cathode** (CATHODE.EXE) — Text-mode web browser
+- **Screen library** (screen.h/screen.c) — Shared VGA rendering engine
+- **INT 63h API** (netisa.h) — C wrappers for all API groups (0x00-0x07)
+- **Stub layer** (netisa_stub.c) — Fake data for DOSBox-X testing
+
+All DOS code targets 8088 real mode, compiled with OpenWatcom 2.0.
 
 ## Repository Structure
 
 ```
 docs/
-  netisa-architecture-spec.md    Full architecture specification
+  netisa-architecture-spec.md      Full architecture specification (2,800+ lines)
+
+dos/
+  lib/
+    screen.h, screen.c             VGA text buffer rendering library
+    netisa.h, netisa.c             INT 63h API definition and C wrappers
+    netisa_stub.c                  Stub implementation for testing
+  tsr/
+    netisa_tsr.asm                 TSR skeleton (NASM, INT 63h handler)
+  launcher/
+    main.c, menu.c, wifi.c,       NETISA.EXE launcher application
+    status.c, menu.h
+  cathode/
+    main.c                         Cathode browser entry point
+    browser.c, browser.h           Navigation state machine, history
+    render.c, render.h             Page renderer (cells to VGA)
+    page.c, page.h                 Page buffer (far heap, 200 rows)
+    input.c, input.h               Keyboard handler
+    urlbar.c, urlbar.h             URL bar editor
+    stub_pages.c, stub_pages.h     Hardcoded test pages
+  Makefile                         Builds all DOS software
+
 phase0/
   cpld/
-    netisa.v                     Verilog source (Quartus II path, recommended)
-    netisa_tb.v                  Verilog testbench (61 tests)
-    netisa.pld                   CUPL source (WinCUPL path, alternative)
+    netisa.v                       Verilog source (Quartus II, recommended)
+    netisa_tb.v                    Verilog testbench (160 tests)
+    netisa.pld                     CUPL source (DEPRECATED, historical reference)
   firmware/
-    main/main.c                  ESP32-S3 Phase 0 loopback firmware
+    main/main.c                    ESP32-S3 Phase 0 loopback firmware
   dos/
-    nisatest.asm                 DOS loopback test program (NASM)
-  README.md                      Phase 0 wiring guide and validation checklist
+    nisatest.asm                   DOS loopback test (NASM)
+  WIRING.md                        Signal-by-signal wiring guide
+  BRINGUP.md                       Bring-up playbook with logic analyzer captures
+  BUILDLOG.md                      Build log and toolchain notes
+  README.md                        Phase 0 overview and validation checklist
+
+hardware/
+  kicad/NetISA_RevA/               KiCad schematic and PCB layout
+
+Makefile                           Top-level build: make dos, make sim, make test
 ```
 
 ## Building
 
-See [Phase 0 README](phase0/README.md) for build instructions and wiring guide.
+### Prerequisites
+
+- **OpenWatcom 2.0** (C:\WATCOM) — DOS C compiler
+- **NASM** — Netwide Assembler for TSR and test programs
+- **Icarus Verilog** (iverilog) — for running the testbench
+- **DOSBox-X** — for testing DOS software
+
+### Build targets
+
+```bash
+make all          # Build everything (DOS software + loopback test)
+make dos          # Build TSR, launcher, and Cathode
+make tsr          # Build NETISA.COM only
+make launcher     # Build NETISA.EXE only
+make cathode      # Build CATHODE.EXE only
+make test         # Build phase0/dos/nisatest.com
+make sim          # Run iverilog testbench (160 tests)
+```
+
+### Testing in DOSBox-X
+
+```
+MOUNT C C:\Development\NetISA
+C:
+CD DOS
+NETISA.COM              (loads TSR, prints banner)
+NETISA.COM              (prints "already resident")
+NETISA.EXE              (launches card control panel)
+cathode\CATHODE.EXE     (launches text-mode browser)
+```
+
+See [Phase 0 README](phase0/README.md) for hardware build instructions and wiring guide.
 
 ## License
 
