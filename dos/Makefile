@@ -33,11 +33,18 @@ LIB_REAL   = lib\netisa.obj
 
 LAUNCHER_OBJS = launcher\main.obj launcher\menu.obj launcher\wifi.obj launcher\status.obj
 
-all: tsr launcher .SYMBOLIC
+CATHODE_OBJS = cathode\main.obj cathode\browser.obj cathode\render.obj &
+	cathode\input.obj cathode\page.obj cathode\urlbar.obj cathode\stub_pages.obj
+
+CATHODE_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=cathode
+
+all: tsr launcher cathode .SYMBOLIC
 
 tsr: netisa.com .SYMBOLIC
 
 launcher: netisa.exe .SYMBOLIC
+
+cathode: cathode.exe .SYMBOLIC
 
 launcher_hw: netisa_hw.exe .SYMBOLIC
 
@@ -93,10 +100,47 @@ launcher\wifi.obj: launcher\wifi.c lib\screen.h lib\netisa.h
 launcher\status.obj: launcher\status.c lib\screen.h lib\netisa.h
 	$(CC) $(CFLAGS) -fo=launcher\status.obj launcher\status.c
 
+# Cathode browser
+cathode.exe: $(CATHODE_OBJS) $(LIB_SCREEN) $(LIB_STUB)
+	$(LINKER) system dos name cathode.exe &
+		file cathode\main.obj &
+		file cathode\browser.obj &
+		file cathode\render.obj &
+		file cathode\input.obj &
+		file cathode\page.obj &
+		file cathode\urlbar.obj &
+		file cathode\stub_pages.obj &
+		file lib\screen.obj &
+		file lib\netisa_stub.obj &
+		option quiet
+
+cathode\main.obj: cathode\main.c cathode\browser.h cathode\render.h cathode\input.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\main.obj cathode\main.c
+
+cathode\browser.obj: cathode\browser.c cathode\browser.h cathode\stub_pages.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\browser.obj cathode\browser.c
+
+cathode\render.obj: cathode\render.c cathode\render.h cathode\page.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\render.obj cathode\render.c
+
+cathode\input.obj: cathode\input.c cathode\input.h cathode\browser.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\input.obj cathode\input.c
+
+cathode\page.obj: cathode\page.c cathode\page.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\page.obj cathode\page.c
+
+cathode\urlbar.obj: cathode\urlbar.c cathode\urlbar.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\urlbar.obj cathode\urlbar.c
+
+cathode\stub_pages.obj: cathode\stub_pages.c cathode\stub_pages.h cathode\page.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\stub_pages.obj cathode\stub_pages.c
+
 clean: .SYMBOLIC
 	-del lib\*.obj
 	-del launcher\*.obj
+	-del cathode\*.obj
 	-del netisa.com
 	-del netisa.exe
 	-del netisa_hw.exe
+	-del cathode.exe
 	-del *.err

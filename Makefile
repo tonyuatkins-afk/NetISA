@@ -24,6 +24,9 @@ tsr: .SYMBOLIC
 launcher: .SYMBOLIC
 	cd dos && wmake -f Makefile launcher
 
+cathode: .SYMBOLIC
+	cd dos && wmake -f Makefile cathode
+
 test: phase0\dos\nisatest.com .SYMBOLIC
 
 phase0\dos\nisatest.com: phase0\dos\nisatest.asm
