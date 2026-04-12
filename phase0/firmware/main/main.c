@@ -29,6 +29,7 @@
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "soc/gpio_struct.h"
+#include "esp_rom_sys.h"
 
 static const char *TAG = "netisa";
 
@@ -240,9 +241,9 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
         /* Assert PREADY (HIGH = data valid) */
         GPIO.out_w1ts = (1 << GPIO_PREADY);
 
-        /* Brief hold for CPLD 2-flop synchronizer (>125ns at 16 MHz) */
-        /* At 240 MHz, ~30 NOPs = 125ns. Be generous. */
-        for (volatile int i = 0; i < 60; i++) { __asm__ volatile("nop"); }
+        /* Hold for CPLD 2-flop synchronizer (>125ns at 16 MHz).
+         * 1 us is well above the minimum and clock-frequency-independent. */
+        esp_rom_delay_us(1);
 
         /* Deassert PREADY */
         GPIO.out_w1tc = (1 << GPIO_PREADY);
