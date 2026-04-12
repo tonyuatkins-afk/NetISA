@@ -42,10 +42,20 @@ start:
     mov     dx, [base_addr]
     in      al, dx
 
-    ; Check for empty bus (0xFF) or stuck bus (0x00 with no BOOT flag)
+    ; Reject empty bus (0xFF = no card driving the bus, ISA pull-ups)
     cmp     al, 0xFF
     je      .no_card
-    
+
+    ; Reject stuck-low bus (0x00 with BOOT_COMPLETE bit 6 clear).
+    ; A working card with PBOOT asserted always has bit 6 set.
+    ; Reading 0x00 means either a stuck-low bus fault or the card is
+    ; present but not responding (CPLD unprogrammed, ESP32 not booted).
+    test    al, al
+    jnz     .card_ok
+    ; AL is 0x00 -- bit 6 is already clear, so this is a stuck bus
+    jmp     .no_card_stuck
+
+.card_ok:
     ; Card detected. Show status byte.
     mov     dx, msg_found
     call    print_string
@@ -189,6 +199,12 @@ start:
 
 .no_card:
     mov     dx, msg_nocard
+    call    print_string
+    mov     al, 1
+    jmp     .exit
+
+.no_card_stuck:
+    mov     dx, msg_nocard_stuck
     call    print_string
     mov     al, 1
     jmp     .exit
@@ -430,6 +446,9 @@ msg_detect: db  'Detecting card... $'
 msg_found:  db  'Found! Status=0x$'
 msg_nocard: db  'NOT FOUND (bus returned 0xFF).', 0x0D, 0x0A
             db  'Check: card seated? address jumpers? slot power?', 0x0D, 0x0A, '$'
+msg_nocard_stuck:
+            db  'NOT FOUND (bus returned 0x00, BOOT flag clear).', 0x0D, 0x0A
+            db  'Check: CPLD programmed? ESP32 booted? PBOOT wired?', 0x0D, 0x0A, '$'
 msg_noboot: db  'WARNING: BOOT_COMPLETE flag not set. Card may still be booting.', 0x0D, 0x0A, '$'
 msg_fwver:  db  'Firmware: v$'
 msg_selftest: db 'Bus self-test (0x55/0xAA)... $'

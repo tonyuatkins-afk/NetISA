@@ -17,7 +17,7 @@
 
 | Artifact | Path | Size | Notes |
 |----------|------|------|-------|
-| CPLD JEDEC | phase0/cpld/output_files/netisa.jed | - | 94/128 macrocells, EPM7128STC100-15 target |
+| CPLD JEDEC | phase0/cpld/output_files/netisa.jed | - | 95/128 macrocells (74%), EPM7128STC100-15 target |
 | CPLD POF | phase0/cpld/output_files/netisa.pof | - | Quartus output, input to POF2JED |
 | ESP32 firmware | phase0/firmware/build/netisa_phase0.bin | 208KB | 80% partition free |
 | DOS test | phase0/dos/nisatest.com | 1,093 bytes | .COM file, transfer to floppy/CF |
@@ -41,12 +41,12 @@ The firmware was originally written for ESP-IDF v5.x (pre-5.5). Two breaking cha
 ### Quartus Compilation Results
 
 - **Device:** EPM7128STC100-15 (TQFP-100, register-compatible with ATF1508AS-10AU100)
-- **Macrocells:** 94 of 128 used (73%)
-- **I/O pins:** 51 of 68 used
+- **Macrocells:** 95 of 128 used (74%) (post 16-bit address decode)
+- **I/O pins:** 61 of 84 used
 - **Shareable expanders:** 7
 - **Errors:** 0
 - **Warnings:** 5 (all harmless: 4 unused signals, 1 missing SDC)
-- **Timing:** -22ns setup slack at default 1GHz constraint. Actual clock is 16 MHz (62.5ns period). Real worst-case path is ~23ns, well within margin. SDC file added post-review.
+- **Timing:** +39.5ns setup slack, +5.0ns hold slack, +26.25ns min pulse width at 16 MHz (SDC constraint loaded). Zero total negative slack.
 
 ### Synthesis Warnings (Expected)
 

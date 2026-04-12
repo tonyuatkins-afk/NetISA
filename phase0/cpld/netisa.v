@@ -2,7 +2,7 @@
 
 // NetISA Rev A - ATF1508AS CPLD Logic (Verilog)
 //
-// Quartus II 13.0sp1 target: EPM7128SLC84-15 (pin-compatible with ATF1508AS)
+// Quartus II 13.0sp1 target: EPM7128STC100-15 (TQFP-100, pin-compatible with ATF1508AS-10AU100)
 // Convert output .pof to .jed via POF2JED with: JTAG=ON, TDI_PULLUP=ON, TMS_PULLUP=ON
 //
 // ISA crypto/transport coprocessor bus interface.
@@ -20,15 +20,15 @@
 // Target: Microchip ATF1508AS-10AU100 (TQFP-100, 128 MC, 5V, 10ns)
 // Clock:  16 MHz external oscillator on GCLK1
 //
-// NOTE: Pin numbers in port comments below are PLCC-84 assignments from the
-// original design. These MUST be remapped to TQFP-100 pin numbers using the
-// ATF1508AS datasheet (Table 3-5) before running the Quartus fitter.
-// The Quartus target device is EPM7128STC100-15 (TQFP-100 equivalent).
-// Logical design is identical between packages; only physical pins change.
+// Pin numbers in port comments below are the Quartus II fitter assignments
+// for EPM7128STC100-15 (TQFP-100). These are auto-assigned by the fitter
+// and recorded in phase0/cpld/output_files/netisa.pin. For the complete
+// signal-by-signal wiring guide including ISA bus, level shifters, and
+// ESP32 GPIO connections, see phase0/WIRING.md.
 
 module netisa (
     // Clock
-    input  wire        CLK,        // pin 83 GCLK1: 16 MHz
+    input  wire        CLK,        // TQFP pin 87 (GCLK1, 16 MHz oscillator)
 
     // ISA Bus: Address (full 16-bit decode, A15-A0)
     // A0-A9 decode base + register within the 16-port window.
@@ -36,55 +36,55 @@ module netisa (
     // every 1 KB boundary (0x680, 0xA80, 0xE80, 0x1280, ...), which
     // would otherwise collide with AWE32 EMU8000 (0x620/0xA20/0xE20),
     // ECP parallel (0x778), and other I/O above 0x3FF on AT+ systems.
-    input  wire        A0,         // pin 4
-    input  wire        A1,         // pin 5
-    input  wire        A2,         // pin 6
-    input  wire        A3,         // pin 9
-    input  wire        A4,         // pin 11
-    input  wire        A5,         // pin 12
-    input  wire        A6,         // pin 13
-    input  wire        A7,         // pin 15
-    input  wire        A8,         // pin 16
-    input  wire        A9,         // pin 17
-    input  wire        A10,        // pin TBD (Quartus auto-assigns)
-    input  wire        A11,        // pin TBD
-    input  wire        A12,        // pin TBD
-    input  wire        A13,        // pin TBD
-    input  wire        A14,        // pin TBD
-    input  wire        A15,        // pin TBD
+    input  wire        A0,         // TQFP pin 30
+    input  wire        A1,         // TQFP pin 80
+    input  wire        A2,         // TQFP pin 84
+    input  wire        A3,         // TQFP pin 50
+    input  wire        A4,         // TQFP pin 85
+    input  wire        A5,         // TQFP pin 27
+    input  wire        A6,         // TQFP pin 5
+    input  wire        A7,         // TQFP pin 16
+    input  wire        A8,         // TQFP pin 72
+    input  wire        A9,         // TQFP pin 94
+    input  wire        A10,        // TQFP pin 29
+    input  wire        A11,        // TQFP pin 7
+    input  wire        A12,        // TQFP pin 92
+    input  wire        A13,        // TQFP pin 79
+    input  wire        A14,        // TQFP pin 68
+    input  wire        A15,        // TQFP pin 98
 
     // ISA Bus: Data (active-high, accent when read, accept when write)
-    inout  wire [7:0]  D,          // pins 18,19,21,23,24,25,27,28
+    inout  wire [7:0]  D,          // TQFP pins 36,33,37,76,32,23,13,35
 
-    // ISA Bus: Control (active LOW accent accent accent, accent handled by inversion below)
-    input  wire        AEN_n,      // pin 29, active LOW = CPU cycle
-    input  wire        IOR_n,      // pin 30, active LOW
-    input  wire        IOW_n,      // pin 31, active LOW
-    output wire        IOCHRDY,    // pin 33, drive LOW to insert wait states
-    input  wire        RESET_n,    // pin 35, active LOW (after RC + Schmitt)
-    output wire        IRQ_OUT,    // pin 36, active HIGH
-    output wire        IOCS16_n,   // pin 37, active LOW
+    // ISA Bus: Control
+    input  wire        AEN_n,      // TQFP pin 67, ISA AEN (active HIGH on bus, inverted internally)
+    input  wire        IOR_n,      // TQFP pin 44, active LOW
+    input  wire        IOW_n,      // TQFP pin 100, active LOW
+    output wire        IOCHRDY,    // TQFP pin 31, drive LOW to insert wait states (open-drain)
+    input  wire        RESET_n,    // TQFP pin 89, active LOW (after RC + Schmitt trigger)
+    output wire        IRQ_OUT,    // TQFP pin 20, active HIGH
+    output wire        IOCS16_n,   // TQFP pin 64, active LOW
 
     // ESP32 Parallel Bus: Data
-    inout  wire [7:0]  PD,         // pins 39-47
+    inout  wire [7:0]  PD,         // TQFP pins 42,46,48,60,57,54,6,9
 
     // ESP32 Parallel Bus: Control
-    output wire [3:0]  PA,         // pins 49-52, register address
-    output wire        PRW,        // pin 53, 1=read-from-ESP32
-    output wire        PSTROBE,    // pin 54, active LOW pulse
-    input  wire        PREADY,     // pin 55, data valid from ESP32
-    input  wire        PIRQ,       // pin 57, interrupt request from ESP32
-    input  wire        PBOOT,      // pin 58, boot complete from ESP32
+    output wire [3:0]  PA,         // TQFP pins 8,14,97,96 (register address)
+    output wire        PRW,        // TQFP pin 24, 1=read-from-ESP32
+    output wire        PSTROBE,    // TQFP pin 52, active LOW pulse
+    input  wire        PREADY,     // TQFP pin 58, data valid from ESP32
+    input  wire        PIRQ,       // TQFP pin 56, interrupt request from ESP32
+    input  wire        PBOOT,      // TQFP pin 28, boot complete from ESP32
 
     // Configuration
-    input  wire [2:0]  ADDR_J,     // pins 59,61,62 DIP switch
-    input  wire        SAFE_MODE,  // pin 63, HIGH = safe mode
-    input  wire        IRQ_SENSE,  // pin 64, HIGH = IRQ enabled
-    input  wire        SLOT16_n,   // pin 65, LOW = 16-bit slot
+    input  wire [2:0]  ADDR_J,     // TQFP pins 45,25,83 (DIP switch)
+    input  wire        SAFE_MODE,  // TQFP pin 65, HIGH = safe mode
+    input  wire        IRQ_SENSE,  // TQFP pin 88, HIGH = IRQ enabled
+    input  wire        SLOT16_n,   // TQFP pin 78, LOW = 16-bit slot
 
     // Test Points
-    output wire        TP0,        // pin 66
-    output wire        TP1         // pin 67
+    output wire        TP0,        // TQFP pin 19 (chip_sel)
+    output wire        TP1         // TQFP pin 99 (iochrdy_hold)
 );
 
 // =========================================================================

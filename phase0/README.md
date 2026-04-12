@@ -27,7 +27,7 @@ phase0/
 **The ATF1508AS-10JU84 (PLCC-84) is obsolete.** All Phase 0 work targets the **ATF1508AS-10AU100 (TQFP-100)**. This means:
 
 - No PLCC socket. Use a TQFP-100 breakout/adapter board for prototyping.
-- Pin numbers in netisa.v and netisa.pld are currently PLCC-84 assignments. **These MUST be remapped to TQFP-100 pin numbers from the ATF1508AS datasheet before running the fitter.** The logical design is identical; only the physical pin assignments change.
+- Pin numbers in `netisa.v` port comments are the Quartus fitter TQFP-100 assignments from `output_files/netisa.pin`. See `WIRING.md` for the complete pin mapping. (`netisa.pld` still has PLCC-84 numbers and is not maintained.)
 - The Quartus target device is **EPM7128STC100-15** (TQFP-100 package), not EPM7128SLC84-15 (PLCC-84).
 - JTAG programming via ATDH1150USB or FT232H JTAG adapter. TL866II+/T48 CANNOT program this chip.
 
@@ -59,18 +59,16 @@ phase0/
 Note: WinCUPL IDE is unstable. Use command-line cupl.exe if GUI crashes.
 ```
 
-**Programming the CPLD:**
+**Programming the CPLD (JTAG only, TQFP-100 package):**
 ```
-Using ATDH1150USB programmer:
+Using ATDH1150USB programmer (recommended):
   atmisp -> load netisa.jed -> program
-
-Using TL866II+ / T48:
-  Insert ATF1508AS in PLCC-84 ZIF adapter
-  Select device: ATF1508AS
-  Load .jed, program, verify
 
 Using Arduino JTAG (community tool):
   See github.com/peterzieba/5Vpld for instructions
+
+NOTE: TL866II+ / T48 CANNOT program the TQFP-100 package.
+      The PLCC-84 variant is obsolete. Use JTAG.
 ```
 
 ### 2. ESP32-S3 Firmware
@@ -110,150 +108,19 @@ nasm -f bin -o nisatest.com phase0/dos/nisatest.asm
 #   - Network (if available)
 ```
 
-## Wiring Guide: Prototype Setup
+## Wiring Guide
 
-### Power
+**The complete, authoritative wiring guide is in [`phase0/WIRING.md`](WIRING.md).** That document contains every signal-by-signal connection derived from the actual Quartus II fitter pin assignments for EPM7128STC100-15 (TQFP-100), including ISA bus routing through HCT245 buffers, ESP32 parallel bus through LVC8T245 level shifters, 74AHC14 Schmitt trigger wiring, oscillator, configuration jumpers, pull-up/pull-down resistor summary, decoupling capacitor placement, and a pre-power verification checklist.
 
-The ESP32-S3 DevKit is powered via USB (separate from ISA bus).
-The ATF1508AS is powered from the ISA bus +5V rail.
-The SN74LVC8T245 level shifter bridges the two voltage domains.
+**Do not reference the PLCC-84 pin numbers that appeared in earlier versions of this file.** Those were from the obsolete package. `WIRING.md` has the correct TQFP-100 pin numbers from `phase0/cpld/output_files/netisa.pin`.
 
-```
-ISA +5V ----[470uF cap]----+---- ATF1508AS VCC (pins 8,22,34,48,60,72)
-                            |
-                            +---- SN74LVC8T245 VCCA (5V side)
-                            |
-                            +---- 100nF bypass caps (one per VCC pin)
+Key safety reminders (see WIRING.md for full details):
 
-ISA GND --------------------+---- ATF1508AS GND (pins 10,20,32,44,56,68,80)
-                            |
-                            +---- SN74LVC8T245 GND
-                            |
-                            +---- ESP32 DevKit GND (MUST connect ISA GND to DevKit GND)
-
-ESP32 DevKit 3V3 -----------+---- SN74LVC8T245 VCCB (3.3V side)
-                            |
-                            +---- 100nF bypass cap
-```
-
-**CRITICAL: ISA ground and ESP32 DevKit ground MUST be connected.** Without a common ground reference, the level shifter cannot function and signal integrity is undefined. Run a short, thick wire (16-18 AWG) between ISA bus GND and DevKit GND.
-
-**IMPORTANT: Add 10K pull-ups on all buffer /OE pins.** When the CPLD is unprogrammed or being JTAG-programmed, its outputs float. Without pull-ups, bus buffers may enable in random directions, potentially shorting ISA bus lines or ESP32 GPIO. Connect a 10K resistor from each 74HCT245 /OE pin and each SN74LVC8T245 /OE pin to their respective VCC (5V for HCT, 3.3V for LVC). The CPLD drives /OE low during normal operation, overriding the pull-up.
-
-### ISA Bus to CPLD (directly wired to ISA edge connector)
-
-**WARNING: CPLD pin numbers below are for the OBSOLETE PLCC-84 package.** Before wiring, remap all CPLD pin numbers to the TQFP-100 pinout using the ATF1508AS datasheet (Table 3-5, "100-Lead TQFP Pinout"). The ISA bus pin assignments (column 1) and ESP32 GPIO numbers are correct and do not change. Only the CPLD physical pin numbers change between packages.
-
-```
-ISA Pin    Signal      CPLD Pin (PLCC-84)   CPLD Pin (TQFP-100)
--------    ------      ------------------   --------------------
-A31/B31    A0          4                    TBD (remap from datasheet)
-A30/B30    A1          5                    TBD
-A29/B29    A2          6                    TBD
-A28/B28    A3          9                    TBD
-A27/B27    A4          11                   TBD
-A26/B26    A5          12                   TBD
-A25/B25    A6          13                   TBD
-A24/B24    A7          15                   TBD
-A23/B23    A8          16                   TBD
-A22/B22    A9          17                   TBD
-A9/B9      D0          18                   TBD
-A8/B8      D1          19                   TBD
-A7/B7      D2          21                   TBD
-A6/B6      D3          23                   TBD
-A5/B5      D4          24                   TBD
-A4/B4      D5          25                   TBD
-A3/B3      D6          27                   TBD
-A2/B2      D7          28                   TBD
-B8         AEN         29                   TBD
-B14        IOR#        30                   TBD
-B13        IOW#        31                   TBD
-B10        IOCHRDY     33                   TBD
-B2         RESET DRV   35 (through RC)      TBD
-```
-
-### CPLD to ESP32-S3 (through SN74LVC8T245 level shifter)
-
-**Data bus (PD0-PD7): CPLD -> SN74LVC8T245 A-side -> B-side -> ESP32 GPIO**
-```
-CPLD Pin   Signal   LVC8T245 A    LVC8T245 B    ESP32 GPIO
---------   ------   ----------    ----------    ----------
-39         PD0      A1            B1            GPIO4
-40         PD1      A2            B2            GPIO5
-41         PD2      A3            B3            GPIO6
-42         PD3      A4            B4            GPIO7
-43         PD4      A5            B5            GPIO8
-45         PD5      A6            B6            GPIO9
-46         PD6      A7            B7            GPIO10
-47         PD7      A8            B8            GPIO11
-```
-
-**Control signals: direct wire (CPLD 5V outputs, but ESP32 reads 3.3V via LVC8T245 or second LVC8T245)**
-
-For Phase 0 prototype, you can use a second SN74LVC8T245 for the control signals, or use individual level shifters. The simplest approach for prototyping:
-
-```
-CPLD Pin   Signal     ESP32 GPIO   Notes
---------   ------     ----------   -----
-49         PA0        GPIO12       Through level shifter
-50         PA1        GPIO13       Through level shifter
-51         PA2        GPIO14       Through level shifter
-52         PA3        GPIO15       Through level shifter
-53         PRW        GPIO16       Through level shifter
-54         PSTROBE    GPIO17       Through level shifter (critical timing)
-55         PREADY     GPIO18       ESP32 output -> CPLD input (3.3V OK for 5V CMOS)
-57         PIRQ       GPIO38       ESP32 output -> CPLD input (3.3V OK for 5V CMOS)
-58         PBOOT      GPIO21       ESP32 output -> CPLD input (3.3V OK for 5V CMOS)
-```
-
-**CRITICAL: GPIO19 and GPIO20 are USB D-/D+ on ESP32-S3.** Do NOT connect anything to these pins. They are used by the USB-JTAG serial console, which is the primary debugging interface. PIRQ uses GPIO38 instead.
-
-**Why 3.3V ESP32 outputs drive 5V CPLD inputs directly:** The ATF1508AS uses 5V CMOS logic with a VIH threshold of 2.0V. The ESP32-S3's 3.3V output high is well above this threshold. No level shifting needed for ESP32-to-CPLD direction.
-
-### Configuration Inputs (directly to CPLD)
-
-```
-CPLD Pin   Signal      Connection
---------   ------      ----------
-59         ADDR_J0     DIP switch to GND (ON=LOW) with 10K pull-up to 5V
-61         ADDR_J1     DIP switch to GND with 10K pull-up
-62         ADDR_J2     DIP switch to GND with 10K pull-up
-63         SAFE_MODE   Jumper to 5V (HIGH=safe) or GND via 10K pull-down
-64         IRQ_SENSE   Jumper to 5V (HIGH=IRQ enabled) or GND via pull-down
-65         SLOT16      Connect to ISA pin B1 (IOCS16 detect). Pull HIGH (5V)
-                       for 8-bit-only operation during Phase 0.
-```
-
-### 16 MHz Oscillator
-
-```
-Oscillator Pin 14 (VCC) -> 5V + 100nF bypass cap
-Oscillator Pin 7  (GND) -> GND
-Oscillator Pin 8  (OUT) -> CPLD Pin 83 (GCLK1)
-Oscillator Pin 1  (NC)  -> No connect (or enable, check datasheet)
-```
-
-### RESET DRV Filter
-
-```
-ISA RESET DRV (B2) --[10K resistor]--+--[100nF cap to GND]--+
-                                      |                      |
-                                      +-- 74AHC14 input -----+
-                                           |
-                                      74AHC14 output -> CPLD Pin 35
-
-100K pull-down resistor from RESET DRV to GND (for out-of-machine operation)
-```
-
-### IRQ Output (directly from CPLD to ISA)
-
-For Phase 0, pick one IRQ and hard-wire:
-```
-CPLD Pin 36 (IRQ_OUT) -> ISA pin corresponding to your chosen IRQ:
-  IRQ5: ISA pin B21
-  IRQ7: ISA pin B23
-  IRQ3: ISA pin B25
-```
+- **Verify +5V with a multimeter before inserting the card.** Check resistance from ISA +5V to GND (must be > 1 kOhm, no dead short).
+- **ISA ground and ESP32 DevKit ground MUST be connected** via a short 16-18 AWG wire.
+- **Do NOT connect ESP32 GPIO19 or GPIO20 to anything.** They are USB D-/D+.
+- **10K pull-ups on all buffer /OE pins are mandatory** for fail-safe during CPLD programming.
+- **IOCHRDY is open-drain.** The CPLD emulates open-drain via tri-state. Add a 10K pull-up to +5V.
 
 ## Validation Checklist
 

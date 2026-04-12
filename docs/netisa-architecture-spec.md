@@ -23,7 +23,7 @@ NetISA is to modern cryptography what the 8087 was to floating-point math: a cop
 
 3. **8-bit first, 16-bit bonus.** Every feature must work on an 8088 with 640K. 16-bit ISA transfers are a performance optimization for 286+ systems, never a requirement.
 
-4. **Open everything.** KiCad schematics, Gerber files, firmware source, DOS drivers, and this specification are all released under a permissive open-source license (MIT or BSD, TBD).
+4. **Open everything.** KiCad schematics, Gerber files, firmware source, DOS drivers, and this specification are all released under MIT (software) and CERN-OHL-P (hardware).
 
 ### 1.2 Document Organization
 
@@ -2861,7 +2861,7 @@ netisa/
 
 ## 13. Community and Governance
 
-- All code and hardware designs released under MIT license (or BSD 2-clause; TBD before v1). Hardware under CERN-OHL-P.
+- All code released under MIT license. Hardware designs released under CERN-OHL-P.
 - Hardware contributions (alternate processor boards, PCI version) welcome as separate repos linking back to the INT API spec.
 - The INT API specification is versioned independently of the firmware. Breaking changes require a major version bump and are avoided whenever possible.
 - **Compatibility list (wiki):** Maintained from day one. Structured fields: machine model, CPU, chipset, ISA bus speed, BIOS version, card firmware version, result (works/partial/fails), failure description, reporter. This is the single most valuable community artifact for an ISA project. PicoGUS's compatibility list is the primary model.
