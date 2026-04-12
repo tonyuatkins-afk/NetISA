@@ -1,3 +1,14 @@
+/* ================================================================
+ * DEPRECATED: This CUPL file is NOT maintained and does NOT match
+ * the current Verilog design (netisa.v). Specifically:
+ * - Missing full 16-bit address decode (A15-A10)
+ * - Missing status register hardware flag merge
+ * - xfer_timeout is a dead node
+ *
+ * Use the Quartus II + netisa.v path for all builds.
+ * This file is retained only as a historical reference.
+ * ================================================================ */
+
 Name      NetISA_RevA;
 PartNo    01;
 Date      2026-04-07;

@@ -348,8 +348,8 @@ print_dec16:
     pop     ax
     ret
 
-; I/O delay: ~50us on 8088, faster on faster CPUs.
-; Enough for ESP32 GPIO ISR to fire and process.
+; I/O delay: courtesy only -- IOCHRDY handles bus timing for non-cached reads.
+; ~50us on 8088, faster on faster CPUs.
 io_delay:
     push    cx
     mov     cx, 100

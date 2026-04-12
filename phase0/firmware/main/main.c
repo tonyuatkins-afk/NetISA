@@ -7,7 +7,7 @@
  * Hardware: ESP32-S3-DevKitC-1U connected to ATF1508AS via ribbon cable.
  * Build:    ESP-IDF v5.x, idf.py build flash monitor
  *
- * GPIO Assignments (match CPLD netisa.pld):
+ * GPIO Assignments (match CPLD netisa.v):
  *   PD0-PD7:  GPIO4-GPIO11  (parallel data, bidirectional)
  *   PA0-PA3:  GPIO12-GPIO15 (register address, input from CPLD)
  *   PRW:      GPIO16        (read/write direction, input from CPLD)
