@@ -166,25 +166,29 @@ esp_err_t wifi_mgr_scan(wifi_ap_record_t *results, uint16_t *count)
         },
     };
 
+    /* S4 fix: save state before scan so we can restore it afterward */
+    wifi_state_t saved_state = current_state;
     current_state = WIFI_STATE_SCANNING;
     ret = esp_wifi_scan_start(&scan_config, true);  /* blocking */
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Scan start failed: %s", esp_err_to_name(ret));
+        current_state = saved_state;
         return ret;
     }
 
     ret = esp_wifi_scan_get_ap_records(&max_count, results);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Scan get records failed: %s", esp_err_to_name(ret));
+        current_state = saved_state;
         return ret;
     }
 
     *count = max_count;
     ESP_LOGI(TAG, "Scan found %d networks", max_count);
 
-    /* Restore state */
+    /* S4 fix: restore previous state (e.g. CONNECTED) instead of IDLE */
     if (current_state == WIFI_STATE_SCANNING) {
-        current_state = WIFI_STATE_IDLE;
+        current_state = saved_state;
     }
 
     return ESP_OK;
@@ -207,8 +211,10 @@ esp_err_t wifi_mgr_connect(const char *ssid, const char *password)
     retry_count = 0;
     current_state = WIFI_STATE_CONNECTING;
 
-    /* Disconnect first if already connected */
-    esp_wifi_disconnect();
+    /* Connect with new config; ESP-IDF internally handles disconnecting
+     * any existing connection, avoiding the double-connect race that
+     * would occur if we called esp_wifi_disconnect() first (the async
+     * DISCONNECTED event would trigger a retry connect in the handler). */
     esp_wifi_connect();
 
     /* Wait for connection with 10-second timeout */

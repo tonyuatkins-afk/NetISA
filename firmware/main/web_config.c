@@ -10,6 +10,7 @@
 #include "web_config.h"
 #include "wifi_mgr.h"
 #include "http_client.h"
+#include "nv_config.h"
 #include "status.h"
 #include "esp_http_server.h"
 #include "esp_wifi.h"
@@ -19,9 +20,96 @@
 #include "esp_timer.h"
 #include "cJSON.h"
 #include <string.h>
+#include <stdbool.h>
 
 static const char *TAG = "web_config";
 static httpd_handle_t server = NULL;
+
+/**
+ * Admin auth helper (S2 fix): checks X-Admin-Key header against NVS "ota_key".
+ * Returns true if authorized. If no admin key is configured (first-time setup),
+ * all requests are allowed.
+ */
+static bool check_admin_auth(httpd_req_t *req)
+{
+    char stored_key[65] = {0};
+    esp_err_t ret = nv_config_get_string("ota_key", stored_key, sizeof(stored_key));
+
+    /* No key configured: first-time setup mode, allow all */
+    if (ret != ESP_OK || strlen(stored_key) == 0) {
+        return true;
+    }
+
+    char hdr_key[65] = {0};
+    if (httpd_req_get_hdr_value_str(req, "X-Admin-Key", hdr_key, sizeof(hdr_key)) != ESP_OK
+        || strcmp(hdr_key, stored_key) != 0) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Drain remaining request body to prevent connection corruption.
+ * Must be called before returning from POST handlers that reject
+ * the request after sending an error response (e.g., auth failure).
+ */
+static void drain_request_body(httpd_req_t *req)
+{
+    char discard[256];
+    int remaining = req->content_len;
+    while (remaining > 0) {
+        int toread = remaining < (int)sizeof(discard) ? remaining : (int)sizeof(discard);
+        int ret = httpd_req_recv(req, discard, toread);
+        if (ret <= 0) {
+            break;
+        }
+        remaining -= ret;
+    }
+}
+
+/**
+ * URL-decode a string in-place. Converts %XX hex sequences to the
+ * corresponding byte and '+' to space.
+ */
+static void url_decode_in_place(char *str)
+{
+    char *src = str;
+    char *dst = str;
+    while (*src) {
+        if (*src == '%' && src[1] && src[2]) {
+            char hi = src[1];
+            char lo = src[2];
+            int h = (hi >= '0' && hi <= '9') ? hi - '0' :
+                    (hi >= 'A' && hi <= 'F') ? hi - 'A' + 10 :
+                    (hi >= 'a' && hi <= 'f') ? hi - 'a' + 10 : -1;
+            int l = (lo >= '0' && lo <= '9') ? lo - '0' :
+                    (lo >= 'A' && lo <= 'F') ? lo - 'A' + 10 :
+                    (lo >= 'a' && lo <= 'f') ? lo - 'a' + 10 : -1;
+            if (h >= 0 && l >= 0) {
+                *dst++ = (char)(h * 16 + l);
+                src += 3;
+                continue;
+            }
+        }
+        if (*src == '+') {
+            *dst++ = ' ';
+            src++;
+        } else {
+            *dst++ = *src++;
+        }
+    }
+    *dst = '\0';
+}
+
+/**
+ * Send a 403 JSON error for failed admin auth.
+ */
+static esp_err_t send_admin_auth_error(httpd_req_t *req)
+{
+    httpd_resp_send_err(req, HTTPD_403_FORBIDDEN,
+                        "Admin key required (X-Admin-Key header)");
+    return ESP_FAIL;
+}
 
 /* Embedded HTML for the config page */
 static const char config_page_html[] =
@@ -71,10 +159,14 @@ static const char config_page_html[] =
 "<button onclick='conn()'>Connect</button>"
 "<button class='danger' onclick='disc()'>Disconnect</button>"
 "<h2>Firmware Update</h2>"
+"<input type='password' id='otakey' placeholder='Admin/OTA Password'>"
 "<input type='file' id='fw' accept='.bin'>"
 "<button onclick='ota()'>Upload &amp; Update</button>"
+"<h2>Set OTA Password</h2>"
+"<input type='password' id='newotakey' placeholder='New OTA Password'>"
+"<button onclick='setOtaKey()'>Save OTA Password</button>"
 "<h2>System</h2>"
-"<button class='danger' onclick='if(confirm(\"Restart?\"))fetch(\"/restart\")'>Restart</button>"
+"<button class='danger' onclick='restart()'>Restart</button>"
 "<div id='log'></div>"
 "<script>"
 "function log(m){let e=document.getElementById('log');e.textContent+=m+'\\n';e.scrollTop=e.scrollHeight}"
@@ -99,23 +191,38 @@ static const char config_page_html[] =
 "$('wl').appendChild(li)});"
 "log('Found '+d.length+' networks');"
 "}catch(e){log('Scan error: '+e)}}"
+"function ak(){return $('otakey').value}"
 "async function conn(){"
 "let s=$('ssid').value,p=$('pass').value;"
 "if(!s){log('Enter SSID');return}"
 "log('Connecting to '+s+'...');"
-"try{let r=await fetch('/connect',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+"try{let r=await fetch('/connect',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Admin-Key':ak()},"
 "body:'ssid='+encodeURIComponent(s)+'&password='+encodeURIComponent(p)});"
 "let d=await r.json();log(d.status);setTimeout(status,3000);"
 "}catch(e){log('Connect error: '+e)}}"
 "async function disc(){"
-"try{await fetch('/disconnect',{method:'POST'});log('Disconnected');setTimeout(status,1000);"
+"try{await fetch('/disconnect',{method:'POST',headers:{'X-Admin-Key':ak()}});log('Disconnected');setTimeout(status,1000);"
 "}catch(e){log('Error: '+e)}}"
 "async function ota(){"
 "let f=$('fw').files[0];if(!f){log('Select firmware file');return}"
+"let k=$('otakey').value;"
 "log('Uploading '+f.name+' ('+f.size+' bytes)...');"
-"try{let r=await fetch('/update',{method:'POST',body:f});"
+"try{let r=await fetch('/update',{method:'POST',headers:{'X-OTA-Key':k,'X-Admin-Key':k},body:f});"
 "let d=await r.json();log(d.status);"
 "}catch(e){log('OTA error: '+e)}}"
+"async function setOtaKey(){"
+"let k=$('newotakey').value;"
+"if(!k){log('Enter OTA password');return}"
+"let old=ak();"
+"try{let r=await fetch('/set-ota-key',{method:'POST',"
+"headers:{'Content-Type':'application/x-www-form-urlencoded','X-Admin-Key':old},"
+"body:'key='+encodeURIComponent(k)+'&old_key='+encodeURIComponent(old)});"
+"let d=await r.json();log(d.status);"
+"}catch(e){log('Error: '+e)}}"
+"async function restart(){"
+"if(!confirm('Restart?'))return;"
+"try{await fetch('/restart',{method:'POST',headers:{'X-Admin-Key':ak()}});log('Restarting...');"
+"}catch(e){log('Error: '+e)}}"
 "status();setInterval(status,5000);"
 "</script></body></html>";
 
@@ -202,9 +309,14 @@ static esp_err_t scan_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* POST /connect - Connect to WiFi */
+/* POST /connect - Connect to WiFi (S2 fix: admin auth required) */
 static esp_err_t connect_handler(httpd_req_t *req)
 {
+    if (!check_admin_auth(req)) {
+        drain_request_body(req);
+        return send_admin_auth_error(req);
+    }
+
     char buf[256];
     char ssid[33] = {0};
     char password[65] = {0};
@@ -213,9 +325,13 @@ static esp_err_t connect_handler(httpd_req_t *req)
     ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (ret <= 0) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No data");
+        drain_request_body(req);
         return ESP_FAIL;
     }
     buf[ret] = '\0';
+
+    /* Drain any remaining body beyond our 255-byte read buffer */
+    drain_request_body(req);
 
     /* Parse ssid= and password= from URL-encoded form data */
     if (httpd_query_key_value(buf, "ssid", ssid, sizeof(ssid)) != ESP_OK) {
@@ -223,6 +339,9 @@ static esp_err_t connect_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
     httpd_query_key_value(buf, "password", password, sizeof(password));
+
+    url_decode_in_place(ssid);
+    url_decode_in_place(password);
 
     cJSON *root = cJSON_CreateObject();
     esp_err_t err = wifi_mgr_connect(ssid, password);
@@ -240,9 +359,14 @@ static esp_err_t connect_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* POST /disconnect */
+/* POST /disconnect (S2 fix: admin auth required) */
 static esp_err_t disconnect_handler(httpd_req_t *req)
 {
+    if (!check_admin_auth(req)) {
+        drain_request_body(req);
+        return send_admin_auth_error(req);
+    }
+
     wifi_mgr_disconnect();
 
     cJSON *root = cJSON_CreateObject();
@@ -255,9 +379,119 @@ static esp_err_t disconnect_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* POST /update - OTA firmware update */
+/* POST /set-ota-key - Set OTA password in NVS
+ * S1 fix: If an OTA key is already set, require "old_key" field to authorize
+ * the change. First-time setup (no key set) accepts without auth.
+ * S2 fix: Also accepts X-Admin-Key header as alternative auth. */
+static esp_err_t set_ota_key_handler(httpd_req_t *req)
+{
+    char buf[256];
+    char key[65] = {0};
+    int ret;
+
+    ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (ret <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No data");
+        drain_request_body(req);
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    /* Drain any remaining body beyond our 255-byte read buffer */
+    drain_request_body(req);
+
+    if (httpd_query_key_value(buf, "key", key, sizeof(key)) != ESP_OK || strlen(key) == 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing key");
+        return ESP_FAIL;
+    }
+
+    url_decode_in_place(key);
+
+    /* S1 fix: If an admin key already exists, require the old key to change it */
+    char stored_key[65] = {0};
+    esp_err_t key_ret = nv_config_get_string("ota_key", stored_key, sizeof(stored_key));
+    if (key_ret == ESP_OK && strlen(stored_key) > 0) {
+        /* Key exists: check old_key from body OR X-Admin-Key header */
+        bool authorized = false;
+
+        char old_key[65] = {0};
+        if (httpd_query_key_value(buf, "old_key", old_key, sizeof(old_key)) == ESP_OK) {
+            url_decode_in_place(old_key);
+        }
+        if (strlen(old_key) > 0 && strcmp(old_key, stored_key) == 0) {
+            authorized = true;
+        }
+        if (!authorized) {
+            char hdr_key[65] = {0};
+            if (httpd_req_get_hdr_value_str(req, "X-Admin-Key", hdr_key, sizeof(hdr_key)) == ESP_OK
+                && strcmp(hdr_key, stored_key) == 0) {
+                authorized = true;
+            }
+        }
+        if (!authorized) {
+            ESP_LOGW(TAG, "set-ota-key rejected: invalid or missing old_key");
+            drain_request_body(req);
+            httpd_resp_send_err(req, HTTPD_403_FORBIDDEN,
+                                "Current admin key required (old_key field or X-Admin-Key header)");
+            return ESP_FAIL;
+        }
+    }
+
+    esp_err_t err = nv_config_set_string("ota_key", key);
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "status",
+        (err == ESP_OK) ? "OTA password saved" : "Failed to save OTA password");
+    const char *json = cJSON_PrintUnformatted(root);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, json, strlen(json));
+    cJSON_free((void *)json);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+/* POST /update - OTA firmware update (S2 fix: admin auth required;
+ * also accepts legacy X-OTA-Key header for backwards compatibility) */
 static esp_err_t update_handler(httpd_req_t *req)
 {
+    /* OTA requires an admin key to be configured */
+    char stored_key[65] = {0};
+    esp_err_t key_ret = nv_config_get_string("ota_key", stored_key, sizeof(stored_key));
+
+    if (key_ret != ESP_OK || strlen(stored_key) == 0) {
+        ESP_LOGW(TAG, "OTA rejected: no OTA password configured in NVS");
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN,
+                            "OTA disabled: set an OTA password first");
+        drain_request_body(req);
+        return ESP_FAIL;
+    }
+
+    /* Accept either X-Admin-Key or legacy X-OTA-Key header */
+    bool authorized = false;
+    char hdr_key[65] = {0};
+    if (httpd_req_get_hdr_value_str(req, "X-Admin-Key", hdr_key, sizeof(hdr_key)) == ESP_OK
+        && strcmp(hdr_key, stored_key) == 0) {
+        authorized = true;
+    }
+    if (!authorized) {
+        memset(hdr_key, 0, sizeof(hdr_key));
+        if (httpd_req_get_hdr_value_str(req, "X-OTA-Key", hdr_key, sizeof(hdr_key)) == ESP_OK
+            && strcmp(hdr_key, stored_key) == 0) {
+            authorized = true;
+        }
+    }
+    if (!authorized) {
+        ESP_LOGW(TAG, "OTA rejected: invalid or missing admin key");
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "Invalid admin key");
+        drain_request_body(req);
+        return ESP_FAIL;
+    }
+
+    if (req->content_len <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty firmware image");
+        drain_request_body(req);
+        return ESP_FAIL;
+    }
+
     esp_ota_handle_t ota_handle;
     const esp_partition_t *update_partition;
     char buf[1024];
@@ -269,6 +503,7 @@ static esp_err_t update_handler(httpd_req_t *req)
     update_partition = esp_ota_get_next_update_partition(NULL);
     if (!update_partition) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No OTA partition");
+        drain_request_body(req);
         return ESP_FAIL;
     }
 
@@ -279,6 +514,9 @@ static esp_err_t update_handler(httpd_req_t *req)
         received = httpd_req_recv(req, buf, sizeof(buf));
         if (received <= 0) {
             ESP_LOGE(TAG, "OTA receive error");
+            if (!first_chunk) {
+                esp_ota_abort(ota_handle);
+            }
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Receive error");
             return ESP_FAIL;
         }
@@ -288,6 +526,7 @@ static esp_err_t update_handler(httpd_req_t *req)
                                 &ota_handle);
             if (err != ESP_OK) {
                 ESP_LOGE(TAG, "OTA begin failed: %s", esp_err_to_name(err));
+                drain_request_body(req);
                 httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                                     "OTA begin failed");
                 return ESP_FAIL;
@@ -299,6 +538,7 @@ static esp_err_t update_handler(httpd_req_t *req)
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "OTA write failed: %s", esp_err_to_name(err));
             esp_ota_abort(ota_handle);
+            drain_request_body(req);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                                 "OTA write failed");
             return ESP_FAIL;
@@ -310,6 +550,7 @@ static esp_err_t update_handler(httpd_req_t *req)
     err = esp_ota_end(ota_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "OTA end failed: %s", esp_err_to_name(err));
+        /* Body fully consumed at this point, no drain needed */
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OTA end failed");
         return ESP_FAIL;
     }
@@ -317,6 +558,7 @@ static esp_err_t update_handler(httpd_req_t *req)
     err = esp_ota_set_boot_partition(update_partition);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "OTA set boot failed: %s", esp_err_to_name(err));
+        /* Body fully consumed at this point, no drain needed */
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                             "Set boot partition failed");
         return ESP_FAIL;
@@ -337,9 +579,14 @@ static esp_err_t update_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* GET /restart */
+/* POST /restart (S3 fix: changed from GET to POST, admin auth required) */
 static esp_err_t restart_handler(httpd_req_t *req)
 {
+    if (!check_admin_auth(req)) {
+        drain_request_body(req);
+        return send_admin_auth_error(req);
+    }
+
     httpd_resp_sendstr(req, "Restarting...");
     ESP_LOGI(TAG, "Restart requested via web config");
     vTaskDelay(pdMS_TO_TICKS(500));
@@ -350,7 +597,7 @@ static esp_err_t restart_handler(httpd_req_t *req)
 esp_err_t web_config_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 8;
+    config.max_uri_handlers = 9;
     config.stack_size = 8192;
 
     esp_err_t ret = httpd_start(&server, &config);
@@ -367,7 +614,8 @@ esp_err_t web_config_start(void)
         { .uri = "/connect",    .method = HTTP_POST, .handler = connect_handler },
         { .uri = "/disconnect", .method = HTTP_POST, .handler = disconnect_handler },
         { .uri = "/update",     .method = HTTP_POST, .handler = update_handler },
-        { .uri = "/restart",    .method = HTTP_GET,  .handler = restart_handler },
+        { .uri = "/set-ota-key", .method = HTTP_POST, .handler = set_ota_key_handler },
+        { .uri = "/restart",    .method = HTTP_POST, .handler = restart_handler },
     };
 
     for (int i = 0; i < sizeof(uris) / sizeof(uris[0]); i++) {

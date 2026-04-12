@@ -33,6 +33,8 @@ static const char *TAG = "cmd_handler";
 QueueHandle_t cmd_queue = NULL;
 volatile cmd_response_t cmd_response;
 volatile int cmd_response_ready = 0;
+volatile uint8_t cmd_data_buf[CMD_DATA_MAX];
+volatile int cmd_data_len = 0;
 
 /* ===== Group 0x00: System ===== */
 
@@ -156,14 +158,16 @@ static void handle_wifi(const cmd_request_t *req, cmd_response_t *resp)
         }
         /* Pack scan results: count (1 byte) + per-AP: ssid(33) + rssi(1) + auth(1) = 35 bytes */
         resp->status = NI_OK;
-        resp->data[0] = (uint8_t)count;
         int offset = 1;
+        int packed = 0;
         for (int i = 0; i < count && offset + 35 <= CMD_RESP_MAX; i++) {
             memcpy(&resp->data[offset], records[i].ssid, 33);
             resp->data[offset + 33] = (uint8_t)(int8_t)records[i].rssi;
             resp->data[offset + 34] = (uint8_t)records[i].authmode;
             offset += 35;
+            packed++;
         }
+        resp->data[0] = (uint8_t)packed;
         resp->data_len = offset;
         break;
     }
@@ -180,14 +184,11 @@ static void handle_wifi(const cmd_request_t *req, cmd_response_t *resp)
 static void handle_http(const cmd_request_t *req, cmd_response_t *resp)
 {
     switch (req->function) {
-    case 0x00: {  /* HTTP GET - URL passed in params as offset into data buffer */
-        /* For v1, URL is transferred via multiple register writes to
-         * a staging buffer. The params contain the URL length. */
-        /* Simplified: URL is in the first params bytes */
+    case 0x00: {  /* HTTP GET - URL passed via staging buffer (cmd_data_buf) */
         char url[256];
-        int url_len = req->param_len;
+        int url_len = cmd_data_len;
         if (url_len > 255) url_len = 255;
-        memcpy(url, req->params, url_len);
+        memcpy(url, (const void *)cmd_data_buf, url_len);
         url[url_len] = '\0';
 
         int session = http_open_get(url);
@@ -209,6 +210,11 @@ static void handle_http(const cmd_request_t *req, cmd_response_t *resp)
     }
 
     case 0x02: {  /* HTTP read */
+        if (req->param_len < 1) {
+            resp->status = NI_ERR_INVALID_PARAM;
+            resp->data_len = 0;
+            break;
+        }
         int session_id = req->params[0];
         int max_read = CMD_RESP_MAX - 4;
         int bytes = http_read(session_id, (char *)&resp->data[4], max_read);
@@ -227,6 +233,11 @@ static void handle_http(const cmd_request_t *req, cmd_response_t *resp)
     }
 
     case 0x03: {  /* HTTP close */
+        if (req->param_len < 1) {
+            resp->status = NI_ERR_INVALID_PARAM;
+            resp->data_len = 0;
+            break;
+        }
         int session_id = req->params[0];
         http_close(session_id);
         resp->status = NI_OK;
@@ -264,11 +275,11 @@ static void handle_cert(const cmd_request_t *req, cmd_response_t *resp)
 static void handle_dns(const cmd_request_t *req, cmd_response_t *resp)
 {
     switch (req->function) {
-    case 0x00: {  /* Resolve hostname (IPv4) */
+    case 0x00: {  /* Resolve hostname (IPv4) - uses cmd_data_buf for long names */
         char hostname[128];
-        int len = req->param_len;
+        int len = cmd_data_len;
         if (len > 127) len = 127;
-        memcpy(hostname, req->params, len);
+        memcpy(hostname, (const void *)cmd_data_buf, len);
         hostname[len] = '\0';
 
         uint32_t ip;
@@ -350,6 +361,11 @@ static void handle_diag(const cmd_request_t *req, cmd_response_t *resp)
     }
 
     case 0x0B: {  /* Random bytes (CSPRNG) */
+        if (req->param_len < 1) {
+            resp->status = NI_ERR_INVALID_PARAM;
+            resp->data_len = 0;
+            break;
+        }
         int count = req->params[0];
         if (count == 0) count = 1;
         if (count > CMD_RESP_MAX) count = CMD_RESP_MAX;
@@ -415,8 +431,10 @@ void cmd_handler_task(void *arg)
                 resp.data_len = 0;
             }
 
-            /* Copy response to shared buffer and signal ISR */
+            /* Copy response to shared buffer and signal ISR.
+             * Memory barrier ensures ISR on core 0 sees data before flag. */
             memcpy((void *)&cmd_response, &resp, sizeof(resp));
+            __sync_synchronize();
             cmd_response_ready = 1;
 
             ESP_LOGD(TAG, "RESP: status=0x%02X data_len=%d",

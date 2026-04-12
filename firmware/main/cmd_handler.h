@@ -15,6 +15,7 @@
 
 #define CMD_PARAM_MAX   16
 #define CMD_RESP_MAX    512
+#define CMD_DATA_MAX    256
 
 typedef struct {
     uint8_t group;          /* High nibble: 0x00=system, 0x01=wifi, etc */
@@ -38,6 +39,10 @@ extern QueueHandle_t cmd_queue;
 /* Shared response buffer (handler task -> ISR) */
 extern volatile cmd_response_t cmd_response;
 extern volatile int cmd_response_ready;
+
+/* Large command data buffer (ISR fills from staging_buf before enqueue) */
+extern volatile uint8_t cmd_data_buf[CMD_DATA_MAX];
+extern volatile int cmd_data_len;
 
 void cmd_handler_init(void);
 void cmd_handler_task(void *arg);

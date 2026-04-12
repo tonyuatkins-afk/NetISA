@@ -428,7 +428,7 @@ static void process_tag(html_parser_t *p)
     /* Horizontal rule */
     if (tag_is(name, "hr")) {
         if (p->col > 0) emit_newline(p);
-        for (int i = 0; i < HTML_COLS; i++) {
+        for (int i = 0; i < HTML_COLS && p->cell_count < p->max_cells; i++) {
             emit_cell(p, CP437_HR, ATTR_HR, CELL_TEXT, 0);
             p->col++;
         }

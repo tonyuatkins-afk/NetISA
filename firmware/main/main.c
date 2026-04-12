@@ -120,6 +120,9 @@ static volatile int staging_len = 0;
  * bytes one at a time via register 0x04 reads. */
 static volatile int resp_read_pos = 0;
 
+/* Deferred restart flag (F4 fix: ISR sets, task executes) */
+static volatile int restart_requested = 0;
+
 /* Driver mode scaffolding (preserved from Phase 0) */
 #define CMD_SET_MODE            0x10
 #define MODE_SESSION            0x00
@@ -203,6 +206,11 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
 
         if (reg == 0x04) {
             /* Data port: deliver response bytes sequentially */
+            if (cmd_response_ready) {
+            /* Memory barrier: ensure we see the response data written
+             * by cmd_handler_task before the flag was set. */
+            __sync_synchronize();
+            }
             if (cmd_response_ready && resp_read_pos < cmd_response.data_len) {
                 val = cmd_response.data[resp_read_pos++];
                 /* Update response length remaining in registers */
@@ -219,6 +227,19 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
             } else {
                 val = 0x00;
             }
+        } else if (reg == 0x00) {
+            /* Status register: update RESP_READY bit from flag */
+            if (cmd_response_ready) {
+                __sync_synchronize();
+                registers[0x00] |= 0x02;   /* RESP_READY */
+                /* S5 fix: report remaining bytes, not total, consistent
+                 * with the reg 0x04 read path */
+                int remaining = cmd_response.data_len - resp_read_pos;
+                registers[0x01] = (uint8_t)(remaining & 0xFF);
+                registers[0x02] = (uint8_t)((remaining >> 8) & 0xFF);
+                registers[0x06] = (uint8_t)cmd_response.status;
+            }
+            val = registers[0x00];
         } else if (reg == 0x06) {
             /* Error code register: return status from last command */
             val = cmd_response_ready ? (uint8_t)cmd_response.status : NI_OK;
@@ -257,7 +278,9 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
                 }
                 staging_len = 0;
             } else {
-                /* Build command request and enqueue for handler task */
+                /* Build command request and enqueue for handler task.
+                 * Copy full staging buffer into cmd_data_buf for
+                 * data-heavy commands (S1 fix: URLs can be ~256 bytes). */
                 cmd_request_t req;
                 req.group = (val >> 4) & 0x0F;
                 req.function = val & 0x0F;
@@ -265,6 +288,12 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
                                 CMD_PARAM_MAX : staging_len;
                 for (int i = 0; i < req.param_len; i++) {
                     req.params[i] = staging_buf[i];
+                }
+                /* Copy full staging data for handlers that need >16 bytes */
+                cmd_data_len = (staging_len > CMD_DATA_MAX) ?
+                               CMD_DATA_MAX : staging_len;
+                for (int i = 0; i < cmd_data_len; i++) {
+                    cmd_data_buf[i] = staging_buf[i];
                 }
 
                 /* Clear CMD_READY while processing */
@@ -283,11 +312,9 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
                     portYIELD_FROM_ISR();
                 }
             }
-
-            registers[0] = val;
         } else if (reg == 0x07 && val == 0xFF) {
-            /* Reset command: reboot ESP32 */
-            esp_restart();
+            /* Reset command: defer reboot to task context (F4 fix) */
+            restart_requested = 1;
         } else if (reg < REG_COUNT) {
             registers[reg] = val;
         }
@@ -369,12 +396,15 @@ static void status_update_task(void *arg)
         registers[0x0D] = wifi_mgr_get_signal_pct();
         registers[0x0A] = (uint8_t)http_get_active_count();
 
-        /* Set RESP_READY bit when response is available */
-        if (cmd_response_ready) {
-            registers[0x00] |= 0x02;   /* RESP_READY */
-            registers[0x01] = (uint8_t)(cmd_response.data_len & 0xFF);
-            registers[0x02] = (uint8_t)((cmd_response.data_len >> 8) & 0xFF);
-            registers[0x06] = (uint8_t)cmd_response.status;
+        /* F2 fix: Response metadata registers (0x00 RESP_READY bit, 0x01,
+         * 0x02, 0x06) are managed exclusively by the ISR during response
+         * delivery. Do not touch them here to avoid a race. */
+
+        /* F4 fix: Handle deferred restart from ISR */
+        if (restart_requested) {
+            ESP_LOGI(TAG, "Deferred restart executing...");
+            vTaskDelay(pdMS_TO_TICKS(100));
+            esp_restart();
         }
     }
 }

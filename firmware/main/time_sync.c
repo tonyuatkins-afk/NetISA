@@ -12,11 +12,18 @@ static const char *TAG = "time_sync";
 
 esp_err_t time_sync_init(void)
 {
+    static bool initialized = false;
+    if (initialized) {
+        ESP_LOGI(TAG, "SNTP already initialized, skipping");
+        return ESP_OK;
+    }
+
     ESP_LOGI(TAG, "Initializing SNTP with pool.ntp.org");
 
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
     esp_sntp_init();
+    initialized = true;
 
     /* Set timezone to UTC */
     setenv("TZ", "UTC0", 1);
