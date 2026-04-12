@@ -29,37 +29,80 @@ The specific thing that is new: an open-source, register-mapped ISA coprocessor 
 ## Status
 
 **Phase 0:** Parts ordered, awaiting hardware. All build artifacts ready to flash.
-**Phase 1:** DOS software stack complete and tested in DOSBox-X.
+**Phase 1:** DOS software stack and v1 firmware complete. Tested in DOSBox-X.
 
 ### What's built
 
-| Component | Status | Description |
-|-----------|--------|-------------|
-| Architecture spec | Complete | 2,800+ line specification covering hardware, firmware, INT 63h API, security |
-| CPLD logic (Verilog) | Complete | 95/128 macrocells, full 16-bit I/O decode, JEDEC ready to program |
-| Verilog testbench | **160/160 passing** | Address decode, IOCHRDY, watchdog, IRQ, alias rejection, back-to-back cycles, and more |
-| ESP32-S3 firmware | Complete | Builds clean on ESP-IDF v5.5.4, parallel bus handler with ISR on Core 0 |
-| DOS TSR (NETISA.COM) | Complete | 678 bytes, hooks INT 63h, presence check, stub handlers |
-| Screen library | Complete | Direct VGA text buffer rendering, CP437 box drawing, shared across all apps |
-| INT 63h API (netisa.h) | Complete | Full API definition matching spec Section 4, C wrappers with inline INT 63h |
-| Stub layer | Complete | Fake data for DOSBox-X testing without hardware |
-| Launcher (NETISA.EXE) | Complete | WiFi setup, card status, system info, full-screen CP437 UI |
-| **Cathode browser** | **v0.1** | Text-mode web browser: scrolling, link navigation, URL bar, stub pages |
-| DOS loopback test | Complete | 256-byte bus validation (NISATEST.COM) |
+| Component | Status | Quality Gate | Description |
+|-----------|--------|-------------|-------------|
+| Architecture spec | Complete | — | 2,800+ line specification covering hardware, firmware, INT 63h API, security |
+| CPLD logic (Verilog) | Complete | 3 rounds | 95/128 macrocells, full 16-bit I/O decode, JEDEC ready to program |
+| Verilog testbench | **160/160 passing** | — | Address decode, IOCHRDY, watchdog, IRQ, alias rejection, back-to-back cycles |
+| **ESP32-S3 v1 firmware** | **Complete** | **8 rounds** | WiFi, HTTP client, HTML parser, web config, SNTP, DNS, command dispatch |
+| DOS TSR (NETISA.COM) | Complete | — | 678 bytes, hooks INT 63h, presence check, stub handlers |
+| Screen library | Complete | — | Direct VGA text buffer rendering, CP437 box drawing, shared across all apps |
+| INT 63h API (netisa.h) | Complete | — | Full API definition matching spec Section 4, C wrappers with inline INT 63h |
+| Stub layer | Complete | — | Fake data for DOSBox-X testing without hardware |
+| Launcher (NETISA.EXE) | Complete | — | WiFi setup, card status, system info, full-screen CP437 UI |
+| **Cathode browser** | **v0.1** | **5 rounds** | Text-mode web browser: scrolling, link navigation, URL bar, stub pages |
+| **Discord client** | **v0.1** | **6 rounds** | Text-mode chat: channels, messages, compose, timed fake messages |
+| DOS loopback test | Complete | — | 256-byte bus validation (NISATEST.COM) |
 
 ### Next steps
 
 1. Solder breakout boards, wire prototype, walk the 9-gate validation checklist
 2. Connect stub layer to real card I/O ports after Phase 0 hardware passes
-3. Build ESP32-side HTML-to-cell-stream renderer for Cathode
-4. Implement real TLS session management in TSR
+3. Flash v1 firmware to DevKit, test WiFi + web config via AP mode
+4. End-to-end integration: DOS apps talking to real firmware over ISA bus
+
+## v1 Firmware
+
+The v1 firmware replaces the Phase 0 loopback firmware with production networking. It preserves the Phase 0 PSTROBE ISR and register file architecture — the ISA bus interface is unchanged. What changes is what happens after a command arrives via the parallel bus.
+
+### Architecture
+
+- **Core 0:** PSTROBE ISR (highest priority) — handles ISA bus register reads/writes
+- **Core 1:** Command handler task, WiFi, HTTP, web config server
+- **ISR → Task:** FreeRTOS queue carries `cmd_request_t` (command byte + params)
+- **Task → ISR:** Shared volatile `cmd_response` buffer with `__sync_synchronize()` memory barriers
+
+### Modules
+
+| Module | Description |
+|--------|-------------|
+| `cmd_handler` | Dispatch table maps INT 63h groups 0x00–0x07 to handlers |
+| `wifi_mgr` | APSTA mode, auto-connect from NVS, scan, connect/disconnect |
+| `http_client` | Up to 4 concurrent TLS sessions via esp_http_client + cert bundle |
+| `html_parser` | HTML state machine → CP437 cell stream for Cathode browser |
+| `web_config` | Embedded HTTP server with WiFi setup, OTA update, status API |
+| `nv_config` | NVS persistent storage for WiFi credentials and admin key |
+| `dns_resolver` | lwIP getaddrinfo wrapper |
+| `time_sync` | SNTP synchronization with pool.ntp.org |
+| `ws_client` | WebSocket stub (reserved for v2) |
+
+### Security
+
+- **Admin authentication:** NVS-stored admin key protects all destructive web endpoints (`/connect`, `/disconnect`, `/restart`, `/update`, `/set-ota-key`). Read-only endpoints (`/status`, `/scan`) remain public for diagnostics.
+- **First-time setup mode:** When no admin key is set, all endpoints are open. Users set a password via the web config UI on first use.
+- **OTA firmware updates:** Require admin key + content-length validation. OTA handles are properly aborted on errors. Request bodies are drained on all failure paths.
+
+### Testing on bare DevKit (no ISA card needed)
+
+```bash
+cd firmware
+idf.py set-target esp32s3
+idf.py build
+idf.py -p COMx flash monitor
+```
+
+Connect to "NetISA-Setup" AP from your phone, browse to 192.168.4.1 for the web config UI.
 
 ## Cathode: Text-Mode Web Browser
 
 Cathode is a built-in ANSI text-mode web browser that renders modern HTTPS websites in CP437 on any DOS machine from 8088 to Pentium. The browser is split between DOS and ESP32:
 
 - **DOS side** (built): receives a cell stream, manages scrollback, renders to VGA text buffer, handles keyboard navigation
-- **ESP32 side** (planned): fetches URLs over HTTPS, parses HTML, converts to (char, attr) cell stream
+- **ESP32 side** (built): `html_parser` module fetches URLs over HTTPS, parses HTML, converts to (char, attr) cell stream
 
 Currently runs with stub pages for testing. Key features:
 - 200-row scrollback buffer on far heap (~80KB)
@@ -73,6 +116,23 @@ Currently runs with stub pages for testing. Key features:
 CATHODE.EXE                     Start page
 CATHODE.EXE about:test          Feature test page
 CATHODE.EXE about:help          Keyboard shortcuts
+```
+
+## Discord Client
+
+A text-mode Discord client for DOS, demonstrating the NetISA card's ability to connect retro PCs to modern chat platforms. Runs with stub data and timed fake messages for DOSBox-X testing.
+
+Key features:
+- 6 channels with per-channel far-heap message storage
+- Word-wrapped message rendering with author colors
+- Compose bar with cursor editing
+- Timed fake message injection (~5 second intervals)
+- Tab-cycling focus: Channels → Messages → Compose
+- PgUp/PgDn scrolling with scroll position tracking
+- Quality-gated: 6 rounds of adversarial review, all Fatal/Significant bugs fixed
+
+```
+DISCORD.EXE                     Launches Discord client
 ```
 
 ## Roadmap beyond DOS
@@ -97,17 +157,37 @@ The three driver modes are specified in [docs/netisa-architecture-spec.md](docs/
 - **DOS TSR** (NETISA.COM) — 678-byte INT 63h handler, under 2KB resident target
 - **Launcher** (NETISA.EXE) — Full-screen card configuration UI
 - **Cathode** (CATHODE.EXE) — Text-mode web browser
+- **Discord** (DISCORD.EXE) — Text-mode chat client
 - **Screen library** (screen.h/screen.c) — Shared VGA rendering engine
 - **INT 63h API** (netisa.h) — C wrappers for all API groups (0x00-0x07)
 - **Stub layer** (netisa_stub.c) — Fake data for DOSBox-X testing
+- **v1 Firmware** — ESP32-S3 production firmware (WiFi, HTTP, HTML parser, web config, SNTP, DNS)
 
 All DOS code targets 8088 real mode, compiled with OpenWatcom 2.0.
+ESP32 firmware builds with ESP-IDF v5.5.4.
 
 ## Repository Structure
 
 ```
 docs/
   netisa-architecture-spec.md      Full architecture specification (2,800+ lines)
+
+firmware/                          v1 ESP32-S3 production firmware
+  CMakeLists.txt                   ESP-IDF project file
+  sdkconfig.defaults               ESP-IDF configuration
+  partitions.csv                   Dual OTA partition table
+  main/
+    main.c                         App entry, PSTROBE ISR (preserved from Phase 0)
+    cmd_handler.c, cmd_handler.h   Command dispatch (INT 63h groups 0x00-0x07)
+    wifi_mgr.c, wifi_mgr.h         WiFi station + AP mode manager
+    http_client.c, http_client.h   HTTPS client (4 concurrent TLS sessions)
+    html_parser.c, html_parser.h   HTML to CP437 cell stream (for Cathode)
+    web_config.c, web_config.h     Web config UI + OTA update server
+    nv_config.c, nv_config.h       NVS persistent config storage
+    dns_resolver.c, dns_resolver.h DNS resolution wrapper
+    time_sync.c, time_sync.h       SNTP time synchronization
+    ws_client.c, ws_client.h       WebSocket stub (v2 reserved)
+    status.h                       Error codes matching DOS netisa.h
 
 dos/
   lib/
@@ -127,6 +207,12 @@ dos/
     input.c, input.h               Keyboard handler
     urlbar.c, urlbar.h             URL bar editor
     stub_pages.c, stub_pages.h     Hardcoded test pages
+  discord/
+    main.c                         Discord client entry point
+    discord.c, discord.h           State machine, channel switching
+    render_dc.c                    Message renderer with word wrap
+    input_dc.c                     Keyboard handler, focus cycling
+    stub_discord.c                 Fake channels, messages, timed injection
   Makefile                         Builds all DOS software
 
 phase0/
@@ -157,17 +243,26 @@ Makefile                           Top-level build: make dos, make sim, make tes
 - **NASM** — Netwide Assembler for TSR and test programs
 - **Icarus Verilog** (iverilog) — for running the testbench
 - **DOSBox-X** — for testing DOS software
+- **ESP-IDF v5.5.4** — for building ESP32-S3 firmware
 
 ### Build targets
 
 ```bash
+# DOS software
 make all          # Build everything (DOS software + loopback test)
-make dos          # Build TSR, launcher, and Cathode
+make dos          # Build TSR, launcher, Cathode, and Discord
 make tsr          # Build NETISA.COM only
 make launcher     # Build NETISA.EXE only
 make cathode      # Build CATHODE.EXE only
+make discord      # Build DISCORD.EXE only
 make test         # Build phase0/dos/nisatest.com
 make sim          # Run iverilog testbench (160 tests)
+
+# ESP32-S3 firmware
+cd firmware
+idf.py set-target esp32s3
+idf.py build
+idf.py -p COMx flash monitor
 ```
 
 ### Testing in DOSBox-X
@@ -180,6 +275,7 @@ NETISA.COM              (loads TSR, prints banner)
 NETISA.COM              (prints "already resident")
 NETISA.EXE              (launches card control panel)
 cathode\CATHODE.EXE     (launches text-mode browser)
+discord\DISCORD.EXE     (launches Discord client)
 ```
 
 See [Phase 0 README](phase0/README.md) for hardware build instructions and wiring guide.
