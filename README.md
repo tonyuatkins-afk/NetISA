@@ -14,6 +14,8 @@ NetISA is an open-source 8/16-bit ISA expansion card that gives IBM PC/XT/AT and
 |---|---|
 | ![NetISA Discord client running in DOS, showing the #general channel of Retro Computing Hub with color-coded usernames, timestamps, and a compose bar](docs/img/discord.png) | ![Cathode text-mode web browser start page in DOS with ASCII art logo, quick links, and version 0.1](docs/img/cathode.png) |
 | Discord client for DOS | Cathode text-mode browser |
+| ![Claude for DOS splash screen with block-art CLAUDE logo, tagline, and version info](docs/img/claude-splash.png) | ![Claude for DOS chat interface with welcome message and compose area](docs/img/claude-chat.png) |
+| Claude for DOS — splash screen | Claude for DOS — chat interface |
 | ![NetISA control panel WiFi setup screen showing scanned networks with signal strength bars, security type, and channel number](docs/img/wifi-setup.png) | ![NetISA control panel card status showing network info, firmware version, uptime, and system details](docs/img/card-status.png) |
 | WiFi network scanner | Card status and diagnostics |
 
