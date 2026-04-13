@@ -94,6 +94,9 @@ void cl_compose_key(cl_state_t *s, int key);
 int cl_parse_exec(const char *response, char *cmd, int cmd_max);
 int cl_exec_command(const char *cmd, char *output, int max_len);
 
+/* Splash screen (splash.c) */
+void cl_splash(void);
+
 /* Stub (stub_claude.c) */
 int stub_claude_respond(const char *user_msg, char *response, int max_len);
 

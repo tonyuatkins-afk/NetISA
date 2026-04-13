@@ -44,7 +44,7 @@ DISCORD_OBJS = discord\main.obj discord\discord.obj discord\render_dc.obj &
 DISCORD_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=discord
 
 CLAUDE_OBJS = claude\main.obj claude\claude.obj claude\chat.obj &
-	claude\compose.obj claude\agent.obj claude\stub_claude.obj
+	claude\compose.obj claude\agent.obj claude\splash.obj claude\stub_claude.obj
 
 CLAUDE_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=claude
 
@@ -183,6 +183,7 @@ claude.exe: $(CLAUDE_OBJS) $(LIB_SCREEN)
 		file claude\chat.obj &
 		file claude\compose.obj &
 		file claude\agent.obj &
+		file claude\splash.obj &
 		file claude\stub_claude.obj &
 		file lib\screen.obj &
 		option quiet
@@ -201,6 +202,9 @@ claude\compose.obj: claude\compose.c claude\claude.h lib\screen.h
 
 claude\agent.obj: claude\agent.c claude\claude.h lib\screen.h
 	$(CC) $(CLAUDE_CFLAGS) -fo=claude\agent.obj claude\agent.c
+
+claude\splash.obj: claude\splash.c claude\claude.h lib\screen.h
+	$(CC) $(CLAUDE_CFLAGS) -fo=claude\splash.obj claude\splash.c
 
 claude\stub_claude.obj: claude\stub_claude.c claude\claude.h lib\screen.h
 	$(CC) $(CLAUDE_CFLAGS) -fo=claude\stub_claude.obj claude\stub_claude.c

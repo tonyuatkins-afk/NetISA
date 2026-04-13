@@ -12,6 +12,7 @@ int main(void)
     static cl_state_t state;
 
     scr_init();
+    cl_splash();
     cl_init(&state);
 
     if (!state.messages) {
