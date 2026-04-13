@@ -7,6 +7,7 @@
 
 #include "screen.h"
 #include <i86.h>
+#include <conio.h>
 #include <string.h>
 
 /* VGA text buffer: segment 0xB800, offset 0x0000 */
@@ -178,7 +179,7 @@ int scr_getkey(void)
 
 int scr_kbhit(void)
 {
-    unsigned char result;
+    unsigned char result = 0;
     /* INT 16h AH=01h: ZF=1 if no key, ZF=0 if key ready.
      * OpenWatcom's int86 cflag only captures CF, not ZF.
      * Use inline asm to check ZF directly. */
@@ -219,4 +220,75 @@ void scr_cursor_pos(int x, int y)
     r.h.dh = (unsigned char)y;
     r.h.dl = (unsigned char)x;
     int86(0x10, &r, &r);
+}
+
+void scr_delay(int ms)
+{
+    unsigned long far *tick = (unsigned long far *)MK_FP(0x0040, 0x006C);
+    unsigned long ticks, start;
+    if (ms <= 0) return;
+    ticks = (unsigned long)ms * 182UL / 10000UL;
+    if (ticks == 0) ticks = 1;
+    start = *tick;
+    while ((*tick - start) < ticks) { /* spin */ }
+}
+
+/* VGA DAC palette fade - static buffer shared by fade_in/fade_out */
+static unsigned char fade_pal[768];
+
+static void scr_wait_vsync(void)
+{
+    while (inp(0x3DA) & 0x08) { }
+    while (!(inp(0x3DA) & 0x08)) { }
+}
+
+void scr_fade_in(int steps, int step_delay_ms)
+{
+    int s, i;
+
+    /* Read current palette (the target we're fading to) */
+    outp(0x3C7, 0);
+    for (i = 0; i < 768; i++)
+        fade_pal[i] = (unsigned char)inp(0x3C9);
+
+    /* Set all black */
+    outp(0x3C8, 0);
+    for (i = 0; i < 768; i++)
+        outp(0x3C9, 0);
+
+    /* Gradually restore */
+    for (s = 1; s <= steps; s++) {
+        scr_wait_vsync();
+        outp(0x3C8, 0);
+        for (i = 0; i < 768; i++) {
+            unsigned char v = (unsigned char)(
+                (unsigned int)fade_pal[i] * (unsigned int)s
+                / (unsigned int)steps);
+            outp(0x3C9, v);
+        }
+        scr_delay(step_delay_ms);
+    }
+}
+
+void scr_fade_out(int steps, int step_delay_ms)
+{
+    int s, i;
+
+    /* Read current palette */
+    outp(0x3C7, 0);
+    for (i = 0; i < 768; i++)
+        fade_pal[i] = (unsigned char)inp(0x3C9);
+
+    /* Gradually dim to black */
+    for (s = steps - 1; s >= 0; s--) {
+        scr_wait_vsync();
+        outp(0x3C8, 0);
+        for (i = 0; i < 768; i++) {
+            unsigned char v = (unsigned char)(
+                (unsigned int)fade_pal[i] * (unsigned int)s
+                / (unsigned int)steps);
+            outp(0x3C9, v);
+        }
+        scr_delay(step_delay_ms);
+    }
 }

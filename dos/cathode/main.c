@@ -41,6 +41,9 @@ int main(int argc, char *argv[])
     render_all(b.current_page, b.urlbar.buf,
                b.urlbar.editing, b.urlbar.cursor, b.status_msg);
 
+    /* Fade in from black (VGA palette animation) */
+    scr_fade_in(12, 40);
+
     /* Main event loop */
     while (b.running) {
         int key = scr_getkey();
@@ -51,6 +54,9 @@ int main(int argc, char *argv[])
                        b.urlbar.editing, b.urlbar.cursor, b.status_msg);
         }
     }
+
+    /* Fade out to black before exit */
+    scr_fade_out(12, 30);
 
     /* Cleanup */
     browser_shutdown(&b);

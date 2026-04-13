@@ -76,19 +76,44 @@ static void build_home(page_buffer_t *p)
     strcpy(p->title, "Cathode - Start Page");
     strcpy(p->url, "about:home");
 
-    /* Block-character title */
-    put_str(p, r, 4,
-        "\xDB\xDB\xDB \xDB\xDB\xDB \xDB\xDB\xDB\xDB \xDB  \xDB \xDB\xDB\xDB  \xDB\xDB\xDB  \xDB\xDB\xDB",
+    /* BBS-style block art: CATHODE
+     * CP437: \xDB=full, \xDC=lower half, \xDF=upper half
+     * 5 rows tall, 7 letters x 6 chars + 6 gaps x 2 = 54 chars.
+     * Centered at col 13 in 80-col display.
+     * Color gradient: green -> bright green -> white -> bright green -> green
+     */
+    /*        C.....  A.....  T.....  H.....  O.....  D.....  E.....  */
+    put_str(p, r++, 13,
+        "\xDC\xDB\xDB\xDB\xDB\xDC" "  " "\xDC\xDB\xDB\xDB\xDB\xDC" "  "
+        "\xDB\xDB\xDB\xDB\xDB\xDB" "  " "\xDB\xDB  \xDB\xDB" "  "
+        "\xDC\xDB\xDB\xDB\xDB\xDC" "  " "\xDB\xDB\xDB\xDB\xDB\xDC" "  "
+        "\xDB\xDB\xDB\xDB\xDB\xDB",
+        ATTR_BORDER, CELL_TEXT);
+    put_str(p, r++, 13,
+        "\xDB\xDB    " "  " "\xDB\xDB  \xDB\xDB" "  "
+        "  \xDB\xDB  " "  " "\xDB\xDB  \xDB\xDB" "  "
+        "\xDB\xDB  \xDB\xDB" "  " "\xDB\xDB  \xDB\xDB" "  "
+        "\xDB\xDB    ",
+        ATTR_SELECTED, CELL_TEXT);
+    put_str(p, r++, 13,
+        "\xDB\xDB    " "  " "\xDB\xDB\xDB\xDB\xDB\xDB" "  "
+        "  \xDB\xDB  " "  " "\xDB\xDB\xDB\xDB\xDB\xDB" "  "
+        "\xDB\xDB  \xDB\xDB" "  " "\xDB\xDB  \xDB\xDB" "  "
+        "\xDB\xDB\xDB\xDB  ",
+        ATTR_HIGHLIGHT, CELL_TEXT);
+    put_str(p, r++, 13,
+        "\xDB\xDB    " "  " "\xDB\xDB  \xDB\xDB" "  "
+        "  \xDB\xDB  " "  " "\xDB\xDB  \xDB\xDB" "  "
+        "\xDB\xDB  \xDB\xDB" "  " "\xDB\xDB  \xDB\xDB" "  "
+        "\xDB\xDB    ",
+        ATTR_SELECTED, CELL_TEXT);
+    put_str(p, r++, 13,
+        "\xDF\xDB\xDB\xDB\xDB\xDF" "  " "\xDB\xDB  \xDB\xDB" "  "
+        "  \xDB\xDB  " "  " "\xDB\xDB  \xDB\xDB" "  "
+        "\xDF\xDB\xDB\xDB\xDB\xDF" "  " "\xDB\xDB\xDB\xDB\xDB\xDF" "  "
+        "\xDB\xDB\xDB\xDB\xDB\xDB",
         ATTR_BORDER, CELL_TEXT);
     r++;
-    put_str(p, r, 4,
-        "\xDB    \xDB  \xDB  \xDB\xDB\xDB\xDB \xDB  \xDB \xDB  \xDB \xDB  \xDB \xDB",
-        ATTR_BORDER, CELL_TEXT);
-    r++;
-    put_str(p, r, 4,
-        "\xDB\xDB\xDB \xDB  \xDB  \xDB  \xDB  \xDB\xDB\xDB  \xDB\xDB\xDB  \xDB\xDB\xDB",
-        ATTR_BORDER, CELL_TEXT);
-    r += 2;
 
     put_str(p, r, 4, "Text-mode web browser for DOS", ATTR_HIGHLIGHT, CELL_TEXT);
     r++;
