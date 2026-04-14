@@ -63,8 +63,18 @@ TEMP_FILES = [DOSCMD_BAT, RESULT_TXT, RETCODE_TXT, DONE_TXT]
 
 
 def find_dosbox_x() -> str:
-    """Locate dosbox-x executable."""
-    # Check PATH first
+    """Locate dosbox-x executable.
+
+    F-20: Checks (in order) the $DOSBOX_X env override, PATH via shutil.which,
+    WinGet's version-stamped install path (joncampbell123.DOSBox-X_*), then
+    standard Program Files / LocalAppData install locations.
+    """
+    # $DOSBOX_X env override takes highest priority
+    env_override = os.environ.get("DOSBOX_X")
+    if env_override and Path(env_override).is_file():
+        return env_override
+
+    # Check PATH
     exe = shutil.which("dosbox-x")
     if exe:
         return exe
@@ -75,14 +85,42 @@ def find_dosbox_x() -> str:
         Path(os.environ.get("PROGRAMFILES(X86)", "")) / "DOSBox-X" / "dosbox-x.exe",
         Path(os.environ.get("LOCALAPPDATA", "")) / "DOSBox-X" / "dosbox-x.exe",
     ]
+
+    # F-20: WinGet install path (version-stamped; glob across versions)
+    winget_base = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Packages"
+    if winget_base.is_dir():
+        for pkg in winget_base.glob("joncampbell123.DOSBox-X_*"):
+            exe_path = pkg / "bin" / "x64" / "Release SDL2" / "dosbox-x.exe"
+            if exe_path.is_file():
+                candidates.append(exe_path)
+
     for p in candidates:
         if p.is_file():
             return str(p)
 
     raise FileNotFoundError(
-        "dosbox-x not found. Install DOSBox-X and ensure it is on PATH "
-        "or in a standard install location."
+        "dosbox-x not found. Install DOSBox-X and ensure it is on PATH, "
+        "set $DOSBOX_X, or install via WinGet (joncampbell123.DOSBox-X)."
     )
+
+
+def _validate_mount_path(path) -> str:
+    """F-04: Reject paths that would break DOSBox-X MOUNT parsing.
+
+    Embedded quotes would terminate the quoted MOUNT argument early and
+    allow injection of additional DOSBox-X commands. Trailing backslashes
+    (except on drive roots like ``C:\\``) are stripped because they form
+    ``\\"`` escape sequences that some parsers choke on.
+    """
+    s = str(path)
+    if '"' in s:
+        raise ValueError(f"Mount path contains quote: {s!r}")
+    # Strip trailing backslashes except for drive roots like C:\
+    while s.endswith("\\") and not (len(s) == 3 and s[1] == ":"):
+        s = s.rstrip("\\")
+    if not s:
+        raise ValueError(f"Mount path is empty after normalization: {path!r}")
+    return s
 
 
 def generate_conf(work_dir: Path,
@@ -96,18 +134,31 @@ def generate_conf(work_dir: Path,
     if not conf_template.is_file():
         raise FileNotFoundError(f"Missing config template: {conf_template}")
 
+    # F-04: validate mount paths before interpolation
+    safe_work_dir = _validate_mount_path(work_dir)
+
     # Read template up to [autoexec]
+    # F-09: track whether [autoexec] was actually seen so we can add one
+    # if the user (or a future template edit) removes it. Without this,
+    # generate_conf would silently emit a config missing the autoexec
+    # section and dosrun would hang until timeout with no diagnostic.
     lines = conf_template.read_text(encoding="utf-8").splitlines()
     config_lines = []
+    seen_autoexec = False
     for line in lines:
         if line.strip().lower() == "[autoexec]":
             config_lines.append(line)
+            seen_autoexec = True
             break
         config_lines.append(line)
 
+    if not seen_autoexec:
+        # Template is malformed or user edited out [autoexec]; add it
+        config_lines.append("[autoexec]")
+
     # Build autoexec section
     config_lines.append("@ECHO OFF")
-    config_lines.append(f'MOUNT C "{work_dir}"')
+    config_lines.append(f'MOUNT C "{safe_work_dir}"')
 
     if extra_mounts:
         for drive, host_path in extra_mounts:
@@ -115,7 +166,8 @@ def generate_conf(work_dir: Path,
                 raise ValueError(f"Invalid drive letter: {drive!r} (expected e.g. 'D:')")
             if drive.upper() == "C:":
                 raise ValueError("Cannot use C: as extra mount (reserved for work dir)")
-            config_lines.append(f'MOUNT {drive} "{host_path}"')
+            safe_host = _validate_mount_path(host_path)
+            config_lines.append(f'MOUNT {drive} "{safe_host}"')
 
     config_lines.append("C:")
     config_lines.append("IF EXIST C:\\_RELAY.BAT CALL C:\\_RELAY.BAT")
@@ -135,6 +187,16 @@ def write_doscmd(work_dir: Path, commands: list[str],
     Each command's output is appended to _RESULT.TXT from within the
     batch itself, avoiding DOSBox-X COMMAND.COM limitations with
     batch-level output redirection.
+
+    F4 caveat: the per-command `>> _RESULT.TXT` append redirect can
+    clobber ERRORLEVEL on some COMMAND.COM versions -- if the redirect
+    itself succeeds, ERRORLEVEL may be reset to 0 even when the
+    command failed. The return code written to _RETCODE.TXT therefore
+    reflects the LAST statement's exit status, which may be the
+    redirect's success rather than the user command's failure. There
+    is no clean fix in DOS batch: COMMAND.COM has no %ERRORLEVEL%
+    variable to stash between the command and the redirect. For
+    reliable exit-status checking, run one command per dosrun call.
     """
     cmd_path = work_dir / DOSCMD_BAT
     result_path = "C:\\" + RESULT_TXT
@@ -150,7 +212,19 @@ def write_doscmd(work_dir: Path, commands: list[str],
         # Strip CR/LF to prevent command injection via embedded newlines
         sanitized = cmd.replace("\r", "").replace("\n", "")
         content += f"{sanitized} >> {result_path}\r\n"
-    cmd_path.write_bytes(content.encode("cp437", errors="replace"))
+    # F-03: validate CP437 strictly. errors="replace" silently substitutes
+    # '?' for non-encodable characters, which can corrupt filenames or
+    # command arguments without any diagnostic. Strict encoding with a
+    # helpful error message is better than a mystery failure in DOS.
+    try:
+        encoded = content.encode("cp437", errors="strict")
+    except UnicodeEncodeError as e:
+        bad_char = content[e.start:e.end]
+        raise ValueError(
+            f"Command contains characters outside CP437 at position "
+            f"{e.start}: {bad_char!r}. DOS cannot represent these."
+        )
+    cmd_path.write_bytes(encoded)
 
 
 def cleanup_temp_files(work_dir: Path) -> None:
@@ -172,7 +246,21 @@ def copy_relay_bat(work_dir: Path) -> None:
     # Read and normalize to CRLF for DOS compatibility
     text = src.read_text(encoding="utf-8")
     text = text.replace("\r\n", "\n").replace("\n", "\r\n")
-    dst.write_bytes(text.encode("cp437", errors="replace"))
+    # F-03: strict CP437 -- silent replacement would corrupt the relay
+    try:
+        encoded = text.encode("cp437", errors="strict")
+    except UnicodeEncodeError as e:
+        bad_char = text[e.start:e.end]
+        raise ValueError(
+            f"_RELAY.BAT contains characters outside CP437 at position "
+            f"{e.start}: {bad_char!r}. DOS cannot represent these."
+        )
+    try:
+        if os.path.samefile(str(src), str(dst)):
+            return  # Don't rewrite the source file
+    except (OSError, ValueError):
+        pass  # dst doesn't exist yet, normal case
+    dst.write_bytes(encoded)
 
 
 def run_dos(commands: list[str], timeout: int = DEFAULT_TIMEOUT,
@@ -210,14 +298,52 @@ def run_dos(commands: list[str], timeout: int = DEFAULT_TIMEOUT,
         print(f"[dosrun] Work dir: {work_dir}", file=sys.stderr)
         print(f"[dosrun] Commands: {commands}", file=sys.stderr)
 
-    # Acquire lockfile to prevent concurrent invocations on same work_dir
+    # Acquire lockfile to prevent concurrent invocations on same work_dir.
+    #
+    # F2 fix: atomically create-AND-write. The old pattern was
+    #   open(O_CREAT|O_EXCL)  # success == lock acquired
+    #   ... finally: write(pid+ts)
+    # A Ctrl+C (or any exception) between open and write left a lock
+    # file with no content, which then looked "unreadable" to every
+    # subsequent run. _try_acquire_lock writes the payload BEFORE
+    # returning success, so the lock file is either absent or complete.
     lock_path = work_dir / LOCK_FILE
-    lock_fd = None
-    try:
-        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except OSError:
-        # Lock file exists -- check if the owning process is still alive
+
+    def _try_acquire_lock(path: Path, payload: str) -> bool:
+        """Atomically create lock file with payload.
+
+        Returns True on success, False if the lock file already exists.
+        On any error after the O_EXCL open succeeds, cleans up the
+        partial lock file before re-raising.
+        """
+        try:
+            fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except OSError:
+            return False
+        try:
+            os.write(fd, payload.encode("ascii"))
+            os.close(fd)
+            return True
+        except OSError:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            try:
+                os.unlink(str(path))
+            except OSError:
+                pass
+            raise
+
+    # F-07: include this invocation's timeout in the payload so a later
+    # dosrun checking staleness can use the victim's own timeout (a long
+    # --timeout 600 run should not be treated as stale after 90s just
+    # because DEFAULT_TIMEOUT*3 == 90).
+    payload = f"{os.getpid()}\n{time.time()}\n{timeout}"
+    if not _try_acquire_lock(lock_path, payload):
+        # Lock file exists -- check if the owning process is still alive.
         pid_text = "<unreadable>"
+        old_pid = -1
         lock_is_stale = False
         try:
             lock_content = lock_path.read_text(
@@ -226,16 +352,36 @@ def run_dos(commands: list[str], timeout: int = DEFAULT_TIMEOUT,
             lock_lines = lock_content.split("\n")
             pid_text = lock_lines[0].strip()
             old_pid = int(pid_text)
-            # Check timestamp-based staleness (defeats PID recycling)
-            if len(lock_lines) >= 2:
-                lock_time = float(lock_lines[1].strip())
-                age = time.time() - lock_time
-                if age > DEFAULT_TIMEOUT * 3:
+            lock_time = float(lock_lines[1].strip()) if len(lock_lines) >= 2 else 0.0
+            # F-07: read the victim's own timeout (3rd line). Old-format
+            # lockfiles (2 lines) fall back to DEFAULT_TIMEOUT.
+            try:
+                victim_timeout = int(lock_lines[2].strip()) if len(lock_lines) >= 3 else DEFAULT_TIMEOUT
+            except ValueError:
+                victim_timeout = DEFAULT_TIMEOUT
+            lock_age = time.time() - lock_time
+
+            # F3 fix: check timestamp FIRST. On Windows, PID recycling
+            # means os.kill(pid, 0) can report "alive" for a PID that
+            # was reassigned to an unrelated process after the original
+            # dosrun died. A lock older than 3x the victim's own timeout
+            # cannot possibly be from a legitimately-running dosrun,
+            # so treat it as stale regardless of os.kill's answer.
+            if lock_age > victim_timeout * 3:
+                lock_is_stale = True
+            else:
+                # Recent lock -- use os.kill as a fast-path for
+                # definitely-dead detection. If it succeeds we
+                # conservatively assume the PID belongs to the original
+                # dosrun (it might be recycled, but we'd rather wait
+                # than stomp on a live peer).
+                try:
+                    os.kill(old_pid, 0)
+                    lock_is_stale = False
+                except (OSError, ProcessLookupError):
                     lock_is_stale = True
-            if not lock_is_stale:
-                os.kill(old_pid, 0)  # signal 0 = existence check
         except (ValueError, OSError):
-            # Process is dead or PID/timestamp unreadable -- stale lock
+            # PID/timestamp unreadable -- treat as stale.
             lock_is_stale = True
 
         if lock_is_stale:
@@ -251,10 +397,7 @@ def run_dos(commands: list[str], timeout: int = DEFAULT_TIMEOUT,
                 lock_path.unlink()
             except OSError:
                 pass
-            # Retry atomic create
-            try:
-                lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            except OSError:
+            if not _try_acquire_lock(lock_path, payload):
                 raise RuntimeError(
                     f"Another dosrun invocation is using {work_dir} "
                     f"(lockfile {lock_path} exists)."
@@ -265,15 +408,14 @@ def run_dos(commands: list[str], timeout: int = DEFAULT_TIMEOUT,
                 f"Another dosrun invocation (PID {old_pid}) is using {work_dir} "
                 f"(lockfile {lock_path} exists). Wait or remove it manually."
             )
-    finally:
-        if lock_fd is not None:
-            lock_data = f"{os.getpid()}\n{time.time()}"
-            os.write(lock_fd, lock_data.encode("ascii"))
-            os.close(lock_fd)
 
     conf_path = None
     stderr_file = None
     stderr_tmp = None
+    # F-08: define proc before try so it's in scope in finally. Without
+    # this, an exception before Popen leaves proc undefined and the
+    # reap path itself NameErrors, masking the original error.
+    proc = None
 
     try:
         # Clean up any stale temp files from previous runs
@@ -402,6 +544,20 @@ def run_dos(commands: list[str], timeout: int = DEFAULT_TIMEOUT,
         return output, retcode
 
     finally:
+        # F-08: ensure DOSBox-X is reaped even if the timeout-path
+        # proc.kill/wait raised (e.g., the OS couldn't kill the handle).
+        # Without this, a crashed kill path leaks a DOSBox-X process
+        # AND leaves the lockfile holding future dosruns hostage.
+        if proc is not None:
+            try:
+                if proc.poll() is None:
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        pass  # last-resort: OS will reap
+            except (OSError, AttributeError):
+                pass
         # Clean up stderr temp file
         if stderr_tmp is not None:
             try:
@@ -417,11 +573,26 @@ def run_dos(commands: list[str], timeout: int = DEFAULT_TIMEOUT,
             except OSError:
                 pass
         cleanup_temp_files(work_dir)
-        # Remove copied _RELAY.BAT from work dir (but not from devenv/)
+        # Remove copied _RELAY.BAT from work dir.
+        # F12 fix: if work_dir happens to be devenv/ itself (e.g. the
+        # user passed --work-dir devenv), the "copied" relay IS the
+        # source file. Deleting it would destroy the authoritative
+        # copy.
+        # F-11: use os.path.samefile rather than Path.resolve() equality.
+        # resolve() can differ between the two paths when junctions,
+        # case-insensitive filesystems, or 8.3 short names are involved;
+        # samefile compares inode/file identity and correctly identifies
+        # two paths pointing at the same on-disk file.
         try:
-            (work_dir / RELAY_BAT).unlink(missing_ok=True)
-        except OSError:
-            pass
+            is_devenv = os.path.samefile(str(work_dir), str(DEVENV_DIR))
+        except (OSError, ValueError):
+            is_devenv = False
+        relay_in_workdir = work_dir / RELAY_BAT
+        if relay_in_workdir.is_file() and not is_devenv:
+            try:
+                relay_in_workdir.unlink(missing_ok=True)
+            except OSError:
+                pass
         # Release lockfile
         try:
             lock_path.unlink(missing_ok=True)

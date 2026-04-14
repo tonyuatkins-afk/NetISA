@@ -276,13 +276,20 @@ def main():
         parser.error("Specify at least one source: --asm or --cc")
 
     # Check tools
-    missing = check_tools()
-    if args.asm and not NASM:
-        print(f"ERROR: {missing[0] if missing else 'NASM not found'}", file=sys.stderr)
-        sys.exit(1)
-    if args.cc and (not WCC.is_file() or not WLINK.is_file()):
-        for m in missing:
-            print(f"ERROR: {m}", file=sys.stderr)
+    _resolve_tools()
+    # Check only the tools we need for this build
+    needed_errors = []
+    if args.asm:
+        if not NASM:
+            needed_errors.append("NASM not found on PATH or in Program Files")
+    if args.cc:
+        if not WCC.is_file():
+            needed_errors.append(f"OpenWatcom wcc not found at {WCC}")
+        if not WLINK.is_file():
+            needed_errors.append(f"OpenWatcom wlink not found at {WLINK}")
+    if needed_errors:
+        for err in needed_errors:
+            print(f"ERROR: {err}", file=sys.stderr)
         sys.exit(1)
 
     built_objects = []

@@ -5,7 +5,7 @@ programs inside DOSBox-X from the Windows command line or Claude Code.
 
 ## Prerequisites
 
-- **DOSBox-X** -- installed and on PATH (or in standard install location)
+- **DOSBox-X 2024.x or later** — earlier versions don't support `-nopromptfolder` and the `fastbcastv` config option. Tested with DOSBox-X 2026.03.29. Installed and on PATH (or in standard install location).
 - **OpenWatcom 2.0** -- `C:\WATCOM` with `BINNT64\wcc.exe` and `wlink.exe`
 - **NASM** -- on PATH or in `C:\Program Files\NASM\`
 - **Python 3.10+** -- on PATH
@@ -115,6 +115,16 @@ All temp files are cleaned up after every run, even on failure.
   Values between thresholds are rounded down to the nearest lower
   threshold. This is a DOS batch limitation — COMMAND.COM lacks
   `%ERRORLEVEL%` so we can't capture the exact value.
+
+- **ERRORLEVEL reflects the LAST command's exit, and may be clobbered
+  by I/O redirect success.** Each user command in `_DOSCMD.BAT` is
+  followed by `>> _RESULT.TXT`. On some COMMAND.COM versions, a
+  successful redirect resets ERRORLEVEL to 0 before the relay reads
+  it, masking a failing command. There is no clean fix in DOS batch
+  (COMMAND.COM has no `%ERRORLEVEL%` variable to stash between the
+  command and the redirect). For reliable exit-status checking, run
+  one command per `dosrun.py` invocation so the captured retcode
+  can only come from that single command.
 
 ## Automation Gotchas (Lessons from Building This)
 
