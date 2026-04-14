@@ -2,7 +2,7 @@
 
 **An ISA coprocessor that aims to give old PCs a realistic path to modern networking.**
 
-> **Status:** Hardware not assembled yet. Firmware, DOS stack, and apps are built and tested in DOSBox-X. Real hardware bring-up is next.
+> **Status:** Hardware not assembled yet. I am waiting on hardware to deliver from DigiKey, Amazon, and TexElec (don't tell my wife...!!!!) But, Firmware, DOS stack, and apps are built and tested in DOSBox-X. I am terrible at Assembly and C, so this was fun to mess up along the way. Real hardware bring-up is next, and I am looking forward to building it and seeing if it starts on fire.
 
 > **[barelybooting.com](https://barelybooting.com/)** — build log, screenshots  
 > • [YouTube: @BarelyBooting](https://www.youtube.com/@BarelyBooting) — videos  
