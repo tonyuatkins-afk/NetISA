@@ -115,18 +115,21 @@ if (Test-Path $tempDir) { Remove-Item "$tempDir\*" -Force }
 else { New-Item -ItemType Directory -Path $tempDir -Force | Out-Null }
 
 # Build DOSBox-X config
+# Put app launch IN the autoexec rather than using -c flag, so args with
+# special chars (like "about:npr" with a colon) pass through correctly.
 $confPath = "$tempDir\capture.conf"
 $autoLines = "MOUNT C $projectDir`nC:`nCD DOS"
 if ($AutoType) {
     $autoLines += "`nAUTOTYPE $AutoType"
 }
+$autoLines += "`n$App"
 
 $confContent = "[sdl]`noutput = surface`nwindowresolution = 720x400`n`n[render]`naspect = true`n`n[autoexec]`n$autoLines`n"
 $confContent | Set-Content $confPath -Encoding ASCII
 
 # Launch DOSBox-X
 Write-Host "[1/3] Launching DOSBox-X..."
-$proc = Start-Process -FilePath $dosboxExe -ArgumentList "-conf",$confPath,"-c",$App -PassThru
+$proc = Start-Process -FilePath $dosboxExe -ArgumentList "-conf",$confPath,"-nopromptfolder" -PassThru
 
 # Wait for window
 $attempts = 0
