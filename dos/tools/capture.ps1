@@ -2,8 +2,31 @@
 .SYNOPSIS
     Capture animated GIFs of NetISA DOS applications running in DOSBox-X.
 
+.DESCRIPTION
+    Launches DOSBox-X with a generated config, runs a DOS app, captures
+    frames via PrintWindow WinAPI, converts to GIF via ffmpeg palette.
+
+    IMPORTANT: App launch is embedded in the config's [autoexec] section,
+    NOT passed via DOSBox-X's -c flag. The -c flag silently drops
+    arguments with special characters (colons, spaces), so launching
+    "CATHODE.EXE about:npr" via -c loses the URL argument. Embedding in
+    autoexec bypasses this.
+
+    For reliable captures:
+    - Pass -nopromptfolder to avoid DOSBox-X first-run dialog
+    - Design apps to accept CLI args for initial state (URL, channel,
+      scenario) — launch at target state instead of navigating via
+      AUTOTYPE
+    - AUTOTYPE -w (initial wait) should be >= 2x app load time
+    - Verify every new capture visually — identical GIFs indicate broken
+      argument passing
+
+    See ~/.claude/projects/.../memory/feedback_dosbox_automation.md
+    for the complete automation ruleset.
+
 .PARAMETER App
-    DOS executable to run (e.g. "CLAUDE.EXE", "DISCORD.EXE").
+    DOS executable to run (e.g. "CLAUDE.EXE", "CATHODE.EXE about:npr").
+    Arguments ARE supported when embedded in the app string.
 
 .PARAMETER Duration
     Recording duration in seconds (default: 15).
@@ -16,6 +39,8 @@
 
 .PARAMETER AutoType
     DOSBox-X AUTOTYPE keystroke string (e.g. "-w 2000 -p 300 down enter").
+    Prefer CLI args over AUTOTYPE for app state — AUTOTYPE is fragile
+    for complex navigation.
 
 .PARAMETER GifWidth
     Output GIF width in pixels (default: 640).

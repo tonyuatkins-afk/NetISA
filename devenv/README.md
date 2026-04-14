@@ -104,3 +104,53 @@ All temp files are cleaned up after every run, even on failure.
   the relay; only stdout is captured via `>> _RESULT.TXT`. If a DOS
   program writes error output to stderr, that output will not appear in
   the captured results.
+
+- **`CALL batch > file` does not capture child output.** DOSBox-X's
+  COMMAND.COM only applies the redirect to the CALL builtin itself,
+  not to commands inside the called batch. Workaround: embed per-command
+  `>> _RESULT.TXT` in `_DOSCMD.BAT` rather than redirecting the CALL.
+
+- **Return codes above 10 are quantized.** The ERRORLEVEL cascade in
+  `_RELAY.BAT` has 30 thresholds (1-10 exact, then steps of 5/10/25).
+  Values between thresholds are rounded down to the nearest lower
+  threshold. This is a DOS batch limitation — COMMAND.COM lacks
+  `%ERRORLEVEL%` so we can't capture the exact value.
+
+## Automation Gotchas (Lessons from Building This)
+
+Building reliable DOSBox-X automation is harder than it looks. These
+lessons apply to both this relay and the GIF capture toolkit in
+`dos/tools/capture.ps1`:
+
+1. **Always pass `-nopromptfolder`** to dosbox-x.exe, or you get the
+   first-run dialog instead of your app.
+
+2. **Don't pass app arguments via `-c`.** DOSBox-X's `-c "APP arg"` flag
+   drops arguments with special characters (e.g., colons in `about:npr`).
+   Embed the app launch directly in the generated config's
+   `[autoexec]` section instead.
+
+3. **Launch at target state, don't navigate.** Design your DOS apps to
+   accept CLI args for initial state (URL, channel, scenario). AUTOTYPE
+   keystroke injection is fragile for complex navigation; launching the
+   app in the target state is more reliable than trying to navigate
+   there with keystrokes.
+
+4. **AUTOTYPE timing is relative to its invocation, not app start.**
+   AUTOTYPE runs in autoexec before your app launches. Set the initial
+   `-w` delay to at least 2x your app's load time.
+
+5. **CR+LF for all batch files.** DOS batch parses as LF-only but fails
+   silently on GOTO labels, IF statements, and control flow. The relay
+   normalizes `_RELAY.BAT` to CR+LF when copying.
+
+6. **Absolute paths for all sentinel files.** If commands CD to a
+   subdirectory, relative file writes go to the new CWD. All relay
+   temp files use `C:\` prefix.
+
+7. **Verify automated captures visually.** A batch run can silently
+   produce wrong output — identical GIFs, wrong app, cropped content.
+   Always eyeball the first frame.
+
+See `~/.claude/projects/C--Development/memory/feedback_dosbox_automation.md`
+for the complete 10-rule reference.

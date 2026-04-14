@@ -15,6 +15,25 @@ The relay works by:
   3. _RELAY.BAT executes _DOSCMD.BAT, captures stdout to _RESULT.TXT,
      writes exit code to _RETCODE.TXT, and signals via _DONE.TXT
   4. This script waits for _DONE.TXT, reads the results, cleans up
+
+DOS/DOSBox-X gotchas this relay works around:
+  - COMMAND.COM does NOT support `2>&1` (creates literal file named &1).
+    Only stdout is captured. stderr is lost.
+  - `CALL batch > file` does NOT capture output from commands inside
+    the called batch — only the CALL builtin itself. We embed per-command
+    `>> _RESULT.TXT` redirects in _DOSCMD.BAT instead.
+  - CR+LF required for all batch files. LF-only parses but fails silently
+    on GOTO labels and IF statements. copy_relay_bat() normalizes on write.
+  - Absolute paths (C:\\_DONE.TXT) for all sentinel files, because commands
+    inside _DOSCMD.BAT may CD to subdirectories.
+  - DOSBox-X launched with -nopromptfolder to skip the first-run dialog.
+  - CP437 encoding (not ASCII) for batch file content, to preserve DOS
+    character set characters in arguments.
+  - Return codes are quantized (30 thresholds, 1-10 exact then steps of
+    5/10/25) because COMMAND.COM lacks %ERRORLEVEL% — we use IF ERRORLEVEL
+    cascade.
+
+See also: feedback_dosbox_automation.md for the complete 10-rule reference.
 """
 
 import argparse
