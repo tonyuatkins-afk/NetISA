@@ -180,7 +180,7 @@ void cl_shutdown(cl_state_t *s)
 
 void cl_send_message(cl_state_t *s, const char *text)
 {
-    char response[MAX_MSG_LEN];
+    static char response[MAX_MSG_LEN];
 
     add_message(s, ROLE_USER, text);
     s->waiting = 1;
@@ -216,10 +216,12 @@ void cl_process_response(cl_state_t *s, const char *text)
              * Stops when Claude's response has no [EXEC] tag. */
             int depth;
             for (depth = 0; depth < 5; depth++) {
-                char output[MAX_MSG_LEN];
-                char sys_msg[MAX_MSG_LEN];
-                char send_buf[MAX_MSG_LEN];
-                char response[MAX_MSG_LEN];
+                /* Static: not re-entrant, but avoids ~2KB stack per
+                 * iteration which overflows the DOS stack. */
+                static char output[MAX_MSG_LEN];
+                static char sys_msg[MAX_MSG_LEN];
+                static char send_buf[MAX_MSG_LEN];
+                static char response[MAX_MSG_LEN];
                 int len, slen;
 
                 len = cl_exec_command(cmd, output, sizeof(output));
@@ -351,6 +353,13 @@ void cl_handle_key(cl_state_t *s, int key)
         switch (scan) {
         case KEY_PGUP:
             s->scroll_pos += CL_CHAT_ROWS;
+            /* Clamp scroll to prevent negative vis_start in renderer */
+            {
+                int max_scroll = s->total_display_lines - CL_CHAT_ROWS;
+                if (max_scroll < 0) max_scroll = 0;
+                if (s->scroll_pos > max_scroll)
+                    s->scroll_pos = max_scroll;
+            }
             return;
         case KEY_PGDN:
             s->scroll_pos -= CL_CHAT_ROWS;

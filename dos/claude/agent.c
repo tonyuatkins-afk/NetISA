@@ -41,6 +41,22 @@ int cl_exec_command(const char *cmd, char *output, int max_len)
     FILE *f;
     int len;
 
+    /* Reject commands with dangerous shell metacharacters */
+    {
+        const char *p = cmd;
+        while (*p) {
+            if (*p == '|' || *p == '&' || *p == ';' || *p == '%' ||
+                *p == '<' || *p == '>' || *p == '`' || *p == '$') {
+                return -1;  /* rejected: shell metacharacter */
+            }
+            p++;
+        }
+    }
+
+    /* NOTE: stderr is not captured. DOS COMMAND.COM does not support
+     * 2>&1 redirection. Any stderr output will write directly to the
+     * console/VGA buffer, temporarily corrupting the chat UI. The
+     * screen is redrawn after the command completes. */
     snprintf(full_cmd, sizeof(full_cmd), "%s > %s", cmd, TEMP_FILE);
     system(full_cmd);
 

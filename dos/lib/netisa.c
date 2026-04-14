@@ -71,6 +71,9 @@ int ni_card_status(ni_card_status_t *status)
     /* Get network status separately */
     {
         uint8_t ns, sp;
+        /* NETSTATUS failure is expected when the card is present but not
+         * connected to a network.  On CF set, zeroed ns/sp correctly
+         * represent "not connected" -- this is intentional fallback. */
         _asm {
             mov ah, NI_GRP_SYSTEM
             mov al, NI_SYS_NETSTATUS

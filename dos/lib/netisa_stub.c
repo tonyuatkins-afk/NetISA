@@ -72,6 +72,8 @@ int ni_wifi_scan(ni_wifi_network_t *list, int max_networks)
     int count = 5;
     int i;
 
+    if (!list) return 0;
+
     if (count > max_networks)
         count = max_networks;
 
@@ -186,6 +188,7 @@ int ni_session_recv(uint8_t handle, char far *buf, uint16_t bufsize,
 int ni_rng_get(uint8_t *buf, uint16_t len)
 {
     uint16_t i;
+    if (!buf || len == 0) return NI_ERR_INVALID_PARAM;
     for (i = 0; i < len; i++)
         buf[i] = (uint8_t)(rand() & 0xFF);
     return NI_OK;

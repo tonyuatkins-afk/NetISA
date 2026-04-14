@@ -182,14 +182,18 @@ static int password_dialog(const char *ssid, char *pass_out)
             /* Backspace */
             if (len > 0) {
                 len--;
-                scr_putc(22 + len, y, '_', ATTR_INPUT);
-                scr_cursor_pos(22 + len, y);
+                if (len < 44) {
+                    scr_putc(22 + len, y, '_', ATTR_INPUT);
+                    scr_cursor_pos(22 + len, y);
+                }
             }
         } else if (ch >= 0x20 && ch < 0x7F && len < PASS_MAX) {
             pass_out[len] = (char)ch;
-            scr_putc(22 + len, y, '*', ATTR_INPUT);
+            if (len < 44) {
+                scr_putc(22 + len, y, '*', ATTR_INPUT);
+                scr_cursor_pos(22 + len + 1, y);
+            }
             len++;
-            scr_cursor_pos(22 + len, y);
         }
     }
 }

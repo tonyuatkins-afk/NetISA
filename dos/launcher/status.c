@@ -55,6 +55,14 @@ static const char *detect_cpu(void)
 static int detect_fpu(void)
 {
     unsigned short status;
+
+    /* Check BIOS equipment list first - bit 1 = FPU present */
+    {
+        union REGS r;
+        int86(0x11, &r, &r);
+        if (!(r.x.ax & 0x02)) return 0;  /* No FPU per BIOS */
+    }
+
     _asm {
         fninit
         mov word ptr status, 0x5A5A
@@ -167,6 +175,10 @@ void panel_status(void)
     }
     y++;
 
+    /* Signal percentage comes from the card's pre-computed value
+     * (cs.signal_pct via NETSTATUS).  wifi.c uses rssi_to_pct() on
+     * raw RSSI instead.  Both sources are valid but may produce
+     * slightly different values for the same connection. */
     scr_puts(6, y, "Signal:", ATTR_DIM);
     if (ws.connected) {
         int pct = cs.signal_pct;

@@ -201,6 +201,7 @@ int63_handler:
     pop     es
     pop     di
     pop     cx
+    xor     ax, ax              ; AX=0 (NI_OK) for C wrapper
     clc
     pop     bp
     iret
