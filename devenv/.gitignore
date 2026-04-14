@@ -1,0 +1,13 @@
+# Relay temp files (should never be committed)
+_DOSCMD.BAT
+_RESULT.TXT
+_RETCODE.TXT
+_DONE.TXT
+_RELAY.BAT
+
+# Generated DOSBox-X configs
+dosrun_*.conf
+
+# Python bytecode
+__pycache__/
+*.pyc
