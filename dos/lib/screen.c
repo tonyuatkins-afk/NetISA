@@ -292,3 +292,17 @@ void scr_fade_out(int steps, int step_delay_ms)
         scr_delay(step_delay_ms);
     }
 }
+
+unsigned char scr_getattr(int x, int y)
+{
+    if (x < 0 || x >= SCR_WIDTH || y < 0 || y >= SCR_HEIGHT)
+        return ATTR_NORMAL;
+    return scr_cell(x, y)->attr;
+}
+
+void scr_setattr(int x, int y, unsigned char attr)
+{
+    if (x < 0 || x >= SCR_WIDTH || y < 0 || y >= SCR_HEIGHT)
+        return;
+    scr_cell(x, y)->attr = attr;
+}

@@ -1,5 +1,5 @@
 /*
- * main.c - Cathode text-mode web browser entry point
+ * main.c - Cathode v0.2 text-mode document browser entry point
  *
  * Usage: CATHODE [url]
  *   If url provided, navigate to it.
@@ -34,24 +34,41 @@ int main(int argc, char *argv[])
     /* Initialize screen */
     scr_init();
 
+    /* Initialize screen */
+    scr_init();
+
     /* Navigate to start page */
     browser_navigate(&b, start_url);
 
     /* Initial render */
     render_all(b.current_page, b.urlbar.buf,
-               b.urlbar.editing, b.urlbar.cursor, b.status_msg);
+               b.urlbar.editing, b.urlbar.cursor,
+               b.status_msg, &b.search);
 
-    /* Fade in from black (VGA palette animation) */
+    /* Fade in from black */
     scr_fade_in(12, 40);
 
-    /* Main event loop */
+    /* Main event loop — non-blocking with DOS idle yield */
     while (b.running) {
-        int key = scr_getkey();
-        input_handle_key(&b, key);
+        int dirty = 0;
 
-        if (b.running) {
+        /* Poll keyboard */
+        if (scr_kbhit()) {
+            int key = scr_getkey();
+            input_handle_key(&b, key);
+            dirty = 1;
+        }
+
+        /* Render when state changed */
+        if (dirty && b.running) {
             render_all(b.current_page, b.urlbar.buf,
-                       b.urlbar.editing, b.urlbar.cursor, b.status_msg);
+                       b.urlbar.editing, b.urlbar.cursor,
+                       b.status_msg, &b.search);
+        }
+
+        /* Yield to DOS when idle (lets TSRs run) */
+        if (!dirty) {
+            _asm { int 28h }
         }
     }
 

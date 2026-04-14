@@ -20,6 +20,11 @@
 #define CELL_HEADING    2
 #define CELL_INPUT      3
 #define CELL_BOLD       4
+#define CELL_IMAGE      5
+#define CELL_BUTTON     6
+#define CELL_CHECKBOX   7
+#define CELL_RADIO      8
+#define CELL_SELECT     9
 
 /* A single rendered cell: character + attribute */
 typedef struct {
@@ -29,7 +34,7 @@ typedef struct {
 
 /* Link table entry */
 #define LINK_URL_MAX    96
-#define MAX_LINKS       32
+#define MAX_LINKS       64
 
 typedef struct {
     char url[LINK_URL_MAX];
@@ -37,12 +42,27 @@ typedef struct {
     int end_row, end_col;
 } page_link_t;
 
+/* Form field entry (far-allocated array per page) */
+#define MAX_FORM_FIELDS 24
+#define FIELD_NAME_MAX  32
+#define FIELD_VALUE_MAX 128
+
+typedef struct {
+    unsigned char type;             /* CELL_INPUT, CELL_BUTTON, etc. */
+    char name[FIELD_NAME_MAX];
+    char value[FIELD_VALUE_MAX];
+    int row, col, width;
+    int form_id;
+    unsigned char checked;          /* for checkbox/radio */
+} form_field_t;
+
 /* Page buffer: header with far pointers to heavy data */
 typedef struct {
     /* Far-allocated arrays (80 * 200 each) */
     page_cell_t far *cells;     /* [MAX_ROWS * COLS] char+attr, 32KB */
     unsigned char far *meta;    /* [MAX_ROWS * COLS] cell type, 16KB */
     unsigned short far *linkmap;/* [MAX_ROWS * COLS] link IDs, 32KB */
+    form_field_t far *fields;   /* [MAX_FORM_FIELDS], ~4KB */
 
     int total_rows;
     int scroll_pos;
@@ -52,6 +72,9 @@ typedef struct {
     page_link_t links[MAX_LINKS];
     int link_count;
     int selected_link;
+
+    int field_count;            /* -1 if fields alloc failed */
+    int focused_field;          /* -1 = no field focused */
 } page_buffer_t;
 
 /* Access helpers (inline row*80+col indexing) */

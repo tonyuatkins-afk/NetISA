@@ -1,14 +1,15 @@
 /*
- * render.h - Renderer types for Cathode browser
+ * render.h - Renderer types for Cathode v0.2 browser
  */
 
 #ifndef RENDER_H
 #define RENDER_H
 
 #include "page.h"
+#include "search.h"
 #include "screen.h"
 
-/* Cathode-specific attributes (extending screen.h design language) */
+/* Cathode-specific attributes */
 #define ATTR_LINK       SCR_ATTR(SCR_LIGHTCYAN, SCR_BLACK)
 #define ATTR_LINK_SEL   SCR_ATTR(SCR_BLACK, SCR_CYAN)
 #define ATTR_BOLD       SCR_ATTR(SCR_WHITE, SCR_BLACK)
@@ -26,12 +27,15 @@
 #define LAYOUT_SEP2_ROW     23
 #define LAYOUT_STATUS_ROW   24
 
-void render_page(page_buffer_t *page);
+void render_page(page_buffer_t *page, search_state_t *search);
+void render_scrollbar(page_buffer_t *page);
 void render_titlebar(const char *title);
 void render_urlbar(const char *url, int editing, int cursor_pos);
+void render_searchbar(search_state_t *search);
 void render_statusbar(page_buffer_t *page, const char *status_msg);
 void render_chrome(void);
 void render_all(page_buffer_t *page, const char *url,
-                int url_editing, int url_cursor, const char *status_msg);
+                int url_editing, int url_cursor,
+                const char *status_msg, search_state_t *search);
 
 #endif /* RENDER_H */

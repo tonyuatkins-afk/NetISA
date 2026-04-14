@@ -31,6 +31,14 @@ page_buffer_t *page_alloc(void)
         return (page_buffer_t *)0;
     }
 
+    /* Non-critical: form fields. If alloc fails, forms are disabled. */
+    p->fields = (form_field_t far *)_fmalloc(
+        (unsigned long)MAX_FORM_FIELDS * sizeof(form_field_t));
+    if (!p->fields)
+        p->field_count = -1;   /* sentinel: forms disabled */
+    else
+        p->field_count = 0;
+
     page_clear(p);
     return p;
 }
@@ -41,29 +49,30 @@ void page_free(page_buffer_t *page)
     if (page->cells)   _ffree(page->cells);
     if (page->meta)    _ffree(page->meta);
     if (page->linkmap) _ffree(page->linkmap);
+    if (page->fields)  _ffree(page->fields);
     free(page);
 }
 
 void page_clear(page_buffer_t *page)
 {
-    unsigned int i;
-
     page->total_rows = 0;
     page->scroll_pos = 0;
     page->title[0] = '\0';
     page->url[0] = '\0';
     page->link_count = 0;
     page->selected_link = -1;
+    if (page->field_count != -1)
+        page->field_count = 0;
+    page->focused_field = -1;
 
     /* Zero meta and linkmap with _fmemset (much faster on 8088) */
     _fmemset(page->meta, CELL_TEXT, TOTAL_CELLS);
     _fmemset(page->linkmap, 0, TOTAL_CELLS * sizeof(unsigned short));
 
-    /* Cells are 2-byte structs; loop is unavoidable for the pattern */
-    for (i = 0; i < TOTAL_CELLS; i++) {
-        page->cells[i].ch = ' ';
-        page->cells[i].attr = ATTR_NORMAL;
-    }
+    /* Zero all cells with _fmemset (much faster than 16K far writes on 8088).
+     * ch=0 renders as NUL/black — invisible, same as empty. The renderer
+     * overwrites visible cells anyway, so zeroed unused cells are fine. */
+    _fmemset(page->cells, 0, TOTAL_CELLS * sizeof(page_cell_t));
 }
 
 void page_set_cell(page_buffer_t *page, int row, int col,

@@ -1,5 +1,5 @@
 /*
- * input.h - Key constants and input types for Cathode browser
+ * input.h - Key constants and input types for Cathode v0.2
  */
 
 #ifndef INPUT_H
@@ -17,8 +17,11 @@
 #define KEY_F6          0x4000
 #define KEY_SHIFT_TAB   0x0F00
 
-/* Ctrl+L = 0x0C (ASCII form feed) */
-#define KEY_CTRL_L      0x000C
+/* Ctrl keys (ASCII values) */
+#define KEY_CTRL_L      0x000C  /* Ctrl+L = focus URL bar */
+#define KEY_CTRL_F      0x0006  /* Ctrl+F = find */
+#define KEY_CTRL_D      0x0004  /* Ctrl+D = bookmark */
+#define KEY_CTRL_B      0x0002  /* Ctrl+B = view bookmarks */
 
 void input_handle_key(browser_state_t *b, int key);
 

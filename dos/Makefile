@@ -10,10 +10,10 @@
 #   launcher_hw - Build NETISA.EXE (launcher with real INT 63h)
 #   clean     - Remove build artifacts
 
-# Tools
-CC = wcc
-LINKER = wlink
-LIB = wlib
+# Tools (full paths for build reliability)
+CC = C:\WATCOM\binnt64\wcc
+LINKER = C:\WATCOM\binnt64\wlink
+LIB = C:\WATCOM\binnt64\wlib
 ASM = nasm
 
 # Compiler flags: 8088 target, small model, max optimization
@@ -34,7 +34,9 @@ LIB_REAL   = lib\netisa.obj
 LAUNCHER_OBJS = launcher\main.obj launcher\menu.obj launcher\wifi.obj launcher\status.obj
 
 CATHODE_OBJS = cathode\main.obj cathode\browser.obj cathode\render.obj &
-	cathode\input.obj cathode\page.obj cathode\urlbar.obj cathode\stub_pages.obj
+	cathode\input.obj cathode\page.obj cathode\urlbar.obj cathode\stub_pages.obj &
+	cathode\utf8.obj cathode\url.obj cathode\htmltok.obj cathode\htmlout.obj &
+	cathode\fetch.obj cathode\search.obj cathode\bookmark.obj
 
 CATHODE_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=cathode
 
@@ -116,7 +118,7 @@ launcher\status.obj: launcher\status.c lib\screen.h lib\netisa.h
 
 # Cathode browser
 cathode.exe: $(CATHODE_OBJS) $(LIB_SCREEN) $(LIB_STUB)
-	$(LINKER) system dos name cathode.exe &
+	$(LINKER) format dos libpath C:\WATCOM\lib286 libpath C:\WATCOM\lib286\dos name cathode.exe &
 		file cathode\main.obj &
 		file cathode\browser.obj &
 		file cathode\render.obj &
@@ -124,6 +126,13 @@ cathode.exe: $(CATHODE_OBJS) $(LIB_SCREEN) $(LIB_STUB)
 		file cathode\page.obj &
 		file cathode\urlbar.obj &
 		file cathode\stub_pages.obj &
+		file cathode\utf8.obj &
+		file cathode\url.obj &
+		file cathode\htmltok.obj &
+		file cathode\htmlout.obj &
+		file cathode\fetch.obj &
+		file cathode\search.obj &
+		file cathode\bookmark.obj &
 		file lib\screen.obj &
 		file lib\netisa_stub.obj &
 		option quiet
@@ -131,13 +140,13 @@ cathode.exe: $(CATHODE_OBJS) $(LIB_SCREEN) $(LIB_STUB)
 cathode\main.obj: cathode\main.c cathode\browser.h cathode\render.h cathode\input.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\main.obj cathode\main.c
 
-cathode\browser.obj: cathode\browser.c cathode\browser.h cathode\stub_pages.h lib\screen.h
+cathode\browser.obj: cathode\browser.c cathode\browser.h cathode\stub_pages.h cathode\htmltok.h cathode\fetch.h cathode\bookmark.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\browser.obj cathode\browser.c
 
-cathode\render.obj: cathode\render.c cathode\render.h cathode\page.h lib\screen.h
+cathode\render.obj: cathode\render.c cathode\render.h cathode\search.h cathode\page.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\render.obj cathode\render.c
 
-cathode\input.obj: cathode\input.c cathode\input.h cathode\browser.h lib\screen.h
+cathode\input.obj: cathode\input.c cathode\input.h cathode\browser.h cathode\bookmark.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\input.obj cathode\input.c
 
 cathode\page.obj: cathode\page.c cathode\page.h lib\screen.h
@@ -146,8 +155,29 @@ cathode\page.obj: cathode\page.c cathode\page.h lib\screen.h
 cathode\urlbar.obj: cathode\urlbar.c cathode\urlbar.h cathode\input.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\urlbar.obj cathode\urlbar.c
 
-cathode\stub_pages.obj: cathode\stub_pages.c cathode\stub_pages.h cathode\page.h cathode\render.h lib\screen.h
+cathode\stub_pages.obj: cathode\stub_pages.c cathode\stub_pages.h cathode\render.h cathode\page.h lib\screen.h
 	$(CC) $(CATHODE_CFLAGS) -fo=cathode\stub_pages.obj cathode\stub_pages.c
+
+cathode\utf8.obj: cathode\utf8.c cathode\utf8.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\utf8.obj cathode\utf8.c
+
+cathode\url.obj: cathode\url.c cathode\url.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\url.obj cathode\url.c
+
+cathode\htmltok.obj: cathode\htmltok.c cathode\htmltok.h cathode\htmlout.h cathode\utf8.h cathode\page.h lib\screen.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\htmltok.obj cathode\htmltok.c
+
+cathode\htmlout.obj: cathode\htmlout.c cathode\htmlout.h cathode\htmltok.h cathode\render.h cathode\url.h cathode\page.h lib\screen.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\htmlout.obj cathode\htmlout.c
+
+cathode\fetch.obj: cathode\fetch.c cathode\fetch.h cathode\stub_pages.h cathode\url.h lib\screen.h lib\netisa.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\fetch.obj cathode\fetch.c
+
+cathode\search.obj: cathode\search.c cathode\search.h cathode\page.h lib\screen.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\search.obj cathode\search.c
+
+cathode\bookmark.obj: cathode\bookmark.c cathode\bookmark.h cathode\url.h
+	$(CC) $(CATHODE_CFLAGS) -fo=cathode\bookmark.obj cathode\bookmark.c
 
 # Discord client
 discord.exe: $(DISCORD_OBJS) $(LIB_SCREEN)

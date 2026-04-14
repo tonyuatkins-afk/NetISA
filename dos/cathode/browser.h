@@ -1,5 +1,5 @@
 /*
- * browser.h - Browser state structures for Cathode
+ * browser.h - Browser state structures for Cathode v0.2
  */
 
 #ifndef BROWSER_H
@@ -7,8 +7,9 @@
 
 #include "page.h"
 #include "urlbar.h"
+#include "search.h"
 
-#define HISTORY_MAX 20
+#define HISTORY_MAX 10
 
 typedef struct {
     page_buffer_t *current_page;
@@ -17,7 +18,7 @@ typedef struct {
     int history_count;
     int running;
     urlbar_t urlbar;
-    int menu_open;
+    search_state_t search;
     char status_msg[80];
 } browser_state_t;
 

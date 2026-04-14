@@ -1,8 +1,8 @@
 /*
- * stub_pages.c - Hardcoded test pages for DOSBox-X testing
+ * stub_pages.c - Stub HTML pages for Cathode browser
  *
- * Three pages: about:home, about:test, about:help
- * Any other URL returns a "not found" error page.
+ * Provides HTML strings for about: URLs. The procedural CP437 block-art
+ * CATHODE logo is preserved for about:home (cannot be expressed in HTML).
  */
 
 #include "stub_pages.h"
@@ -21,412 +21,204 @@ static void put_str(page_buffer_t *p, int row, int col,
     }
 }
 
-/* Helper: write a link string and register it */
-static void put_link(page_buffer_t *p, int row, int col,
-                     const char *text, const char *url)
-{
-    int sc = col;
-    unsigned short lid;
-    const char *t = text;
+/* ===== Procedural CATHODE logo (CP437 block art) ===== */
 
-    /* If link table is full, render as plain text instead of ghost link */
-    if (p->link_count >= MAX_LINKS) {
-        put_str(p, row, col, text, ATTR_NORMAL, CELL_TEXT);
-        return;
-    }
-
-    lid = (unsigned short)p->link_count;
-
-    page_set_cell(p, row, col, '[', ATTR_LINK, CELL_LINK, lid);
-    col++;
-
-    while (*t && col < PAGE_COLS - 1) {
-        page_set_cell(p, row, col, *t, ATTR_LINK, CELL_LINK, lid);
-        t++;
-        col++;
-    }
-
-    page_set_cell(p, row, col, ']', ATTR_LINK, CELL_LINK, lid);
-    col++;
-
-    page_add_link(p, url, row, sc, row, col - 1);
-}
-
-/* Helper: horizontal rule */
-static void put_hrule(page_buffer_t *p, int row)
-{
-    int c;
-    for (c = 0; c < PAGE_COLS; c++)
-        page_set_cell(p, row, c, (char)0xC4, ATTR_HRULE, CELL_TEXT, 0);
-}
-
-/* Helper: heading with bullet marker */
-static void put_heading(page_buffer_t *p, int row, const char *text)
-{
-    page_set_cell(p, row, 0, (char)0xFE, ATTR_BORDER, CELL_HEADING, 0);
-    page_set_cell(p, row, 1, ' ', ATTR_HEADING, CELL_HEADING, 0);
-    put_str(p, row, 2, text, ATTR_HEADING, CELL_HEADING);
-}
-
-/* ===== Page 1: about:home ===== */
-static void build_home(page_buffer_t *p)
+void build_home_logo(page_buffer_t *page)
 {
     int r = 1;
 
-    strcpy(p->title, "Cathode - Start Page");
-    strcpy(p->url, "about:home");
-
     /* BBS-style block art: CATHODE
      * CP437: \xDB=full, \xDC=lower half, \xDF=upper half
-     * 5 rows tall, 7 letters x 6 chars + 6 gaps x 2 = 54 chars.
-     * Centered at col 13 in 80-col display.
+     * 5 rows tall, centered at col 13.
      * Color gradient: green -> bright green -> white -> bright green -> green
      */
-    /*        C.....  A.....  T.....  H.....  O.....  D.....  E.....  */
-    put_str(p, r++, 13,
+    put_str(page, r++, 13,
         "\xDC\xDB\xDB\xDB\xDB\xDC" "  " "\xDC\xDB\xDB\xDB\xDB\xDC" "  "
         "\xDB\xDB\xDB\xDB\xDB\xDB" "  " "\xDB\xDB  \xDB\xDB" "  "
         "\xDC\xDB\xDB\xDB\xDB\xDC" "  " "\xDB\xDB\xDB\xDB\xDB\xDC" "  "
         "\xDB\xDB\xDB\xDB\xDB\xDB",
         ATTR_BORDER, CELL_TEXT);
-    put_str(p, r++, 13,
+    put_str(page, r++, 13,
         "\xDB\xDB    " "  " "\xDB\xDB  \xDB\xDB" "  "
         "  \xDB\xDB  " "  " "\xDB\xDB  \xDB\xDB" "  "
         "\xDB\xDB  \xDB\xDB" "  " "\xDB\xDB  \xDB\xDB" "  "
         "\xDB\xDB    ",
         ATTR_SELECTED, CELL_TEXT);
-    put_str(p, r++, 13,
+    put_str(page, r++, 13,
         "\xDB\xDB    " "  " "\xDB\xDB\xDB\xDB\xDB\xDB" "  "
         "  \xDB\xDB  " "  " "\xDB\xDB\xDB\xDB\xDB\xDB" "  "
         "\xDB\xDB  \xDB\xDB" "  " "\xDB\xDB  \xDB\xDB" "  "
         "\xDB\xDB\xDB\xDB  ",
         ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r++, 13,
+    put_str(page, r++, 13,
         "\xDB\xDB    " "  " "\xDB\xDB  \xDB\xDB" "  "
         "  \xDB\xDB  " "  " "\xDB\xDB  \xDB\xDB" "  "
         "\xDB\xDB  \xDB\xDB" "  " "\xDB\xDB  \xDB\xDB" "  "
         "\xDB\xDB    ",
         ATTR_SELECTED, CELL_TEXT);
-    put_str(p, r++, 13,
+    put_str(page, r++, 13,
         "\xDF\xDB\xDB\xDB\xDB\xDF" "  " "\xDB\xDB  \xDB\xDB" "  "
         "  \xDB\xDB  " "  " "\xDB\xDB  \xDB\xDB" "  "
         "\xDF\xDB\xDB\xDB\xDB\xDF" "  " "\xDB\xDB\xDB\xDB\xDB\xDF" "  "
         "\xDB\xDB\xDB\xDB\xDB\xDB",
         ATTR_BORDER, CELL_TEXT);
-    r++;
 
-    put_str(p, r, 4, "Text-mode web browser for DOS", ATTR_HIGHLIGHT, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, "Powered by NetISA", ATTR_DIM, CELL_TEXT);
-    r += 2;
-
-    put_hrule(p, r);
-    r += 2;
-
-    put_str(p, r, 4, "Quick Links:", ATTR_HEADER, CELL_TEXT);
-    r += 2;
-
-    page_set_cell(p, r, 4, (char)0xFE, ATTR_BULLET, CELL_TEXT, 0);
-    put_link(p, r, 6, "Keyboard Shortcuts", "about:help");
-    r++;
-
-    page_set_cell(p, r, 4, (char)0xFE, ATTR_BULLET, CELL_TEXT, 0);
-    put_link(p, r, 6, "Feature Test Page", "about:test");
-    r++;
-
-    page_set_cell(p, r, 4, (char)0xFE, ATTR_BULLET, CELL_TEXT, 0);
-    put_link(p, r, 6, "barelybooting.com", "https://barelybooting.com");
-    r += 2;
-
-    put_hrule(p, r);
-    r += 2;
-
-    put_str(p, r, 4,
-        "Enter a URL in the address bar (F6) or select a link (Tab).",
-        ATTR_DIM, CELL_TEXT);
-    r++;
-
-    p->total_rows = r + 1;
+    page->total_rows = 7;  /* logo occupies rows 1-6 */
 }
 
-/* ===== Page 2: about:test ===== */
-static void build_test(page_buffer_t *p)
+/* ===== HTML string pages ===== */
+
+static const char far home_html[] =
+    "<html><head><title>Cathode - Start Page</title></head>"
+    "<body>"
+    "<p>Text-mode document browser for DOS</p>"
+    "<p>Powered by NetISA</p>"
+    "<hr>"
+    "<h2>Quick Links</h2>"
+    "<ul>"
+    "<li><a href=\"about:help\">Keyboard Shortcuts</a></li>"
+    "<li><a href=\"about:test\">Feature Test Page</a></li>"
+    "<li><a href=\"about:bb\">barelybooting.com</a></li>"
+    "</ul>"
+    "<h2>Demo Sites (cached)</h2>"
+    "<ul>"
+    "<li><a href=\"about:npr\">NPR - National Public Radio</a></li>"
+    "<li><a href=\"about:bsd\">OpenBSD man page: ls</a></li>"
+    "<li><a href=\"about:example\">Example Domain</a></li>"
+    "</ul>"
+    "<hr>"
+    "<p>Enter a URL in the address bar (F6) or select a link (Tab).</p>"
+    "</body></html>";
+
+static const char far test_html[] =
+    "<html><head><title>Feature Test Page</title></head>"
+    "<body>"
+    "<h1>Test Page</h1>"
+    "<h2>Text Styles</h2>"
+    "<p>Normal text in the default style. "
+    "<b>Bold text stands out.</b> "
+    "<i>Italic text is dimmed.</i> "
+    "<code>Code text is green.</code></p>"
+    "<h2>Links</h2>"
+    "<p><a href=\"about:home\">Back to Start Page</a> | "
+    "<a href=\"about:help\">Help &amp; Shortcuts</a> | "
+    "<a href=\"https://github.com/tonyuatkins-afk/NetISA\">NetISA on GitHub</a></p>"
+    "<hr>"
+    "<h2>Bulleted List</h2>"
+    "<ul>"
+    "<li>First item in the list</li>"
+    "<li>Second item with more detail</li>"
+    "<li>Third item</li>"
+    "<li>Fourth item for scrolling</li>"
+    "</ul>"
+    "<h2>Ordered List</h2>"
+    "<ol>"
+    "<li>Alpha</li>"
+    "<li>Bravo</li>"
+    "<li>Charlie</li>"
+    "</ol>"
+    "<h2>Preformatted</h2>"
+    "<pre>"
+    "CATHODE v0.2 - Text-mode document browser\n"
+    "Copyright (c) 2026 Tony Atkins\n"
+    "MIT License\n"
+    "</pre>"
+    "<h2>Blockquote</h2>"
+    "<blockquote>"
+    "<p>The best way to predict the future is to invent it.</p>"
+    "<p>&mdash; Alan Kay</p>"
+    "</blockquote>"
+    "<h2>Table (Phase 3)</h2>"
+    "<table>"
+    "<tr><th>Feature</th><th>Status</th></tr>"
+    "<tr><td>HTML Parsing</td><td>Working</td></tr>"
+    "<tr><td>Link Navigation</td><td>Working</td></tr>"
+    "<tr><td>URL Bar</td><td>Working</td></tr>"
+    "<tr><td>Scroll Bar</td><td>Working</td></tr>"
+    "<tr><td>Find on Page</td><td>Working</td></tr>"
+    "<tr><td>Bookmarks</td><td>Working</td></tr>"
+    "<tr><td>Mouse Support</td><td>Phase 2</td></tr>"
+    "<tr><td>Tabs</td><td>Phase 2b</td></tr>"
+    "<tr><td>Tables</td><td>Phase 3</td></tr>"
+    "</table>"
+    "<h2>Entities</h2>"
+    "<p>&amp; &lt; &gt; &quot; &copy; &mdash; &nbsp; &#169;</p>"
+    "<h2>Scrolling Test</h2>"
+    "<p>The following content extends below the visible viewport. "
+    "Use PgDn, Down Arrow, or End to scroll.</p>"
+    "<p>Line 01: Scroll test</p>"
+    "<p>Line 02: Scroll test</p>"
+    "<p>Line 03: Scroll test</p>"
+    "<p>Line 04: Scroll test</p>"
+    "<p>Line 05: Scroll test</p>"
+    "<p>Line 06: Scroll test</p>"
+    "<p>Line 07: Scroll test</p>"
+    "<p>Line 08: Scroll test</p>"
+    "<p>Line 09: Scroll test</p>"
+    "<p>Line 10: Scroll test</p>"
+    "<hr>"
+    "<p>End of test page.</p>"
+    "</body></html>";
+
+static const char far help_html[] =
+    "<html><head><title>Keyboard Shortcuts</title></head>"
+    "<body>"
+    "<h1>Cathode Keyboard Shortcuts</h1>"
+    "<h2>Navigation</h2>"
+    "<p><b>Up / Down</b> - Scroll one line</p>"
+    "<p><b>PgUp / PgDn</b> - Scroll one page (20 lines)</p>"
+    "<p><b>Home / End</b> - Jump to top / bottom</p>"
+    "<h2>Links</h2>"
+    "<p><b>Tab</b> - Select next link</p>"
+    "<p><b>Shift+Tab</b> - Select previous link</p>"
+    "<p><b>Enter</b> - Follow selected link</p>"
+    "<p><b>Backspace</b> - Go back to previous page</p>"
+    "<h2>Address Bar</h2>"
+    "<p><b>F6 / Ctrl+L</b> - Focus address bar</p>"
+    "<p><b>Enter</b> - Navigate to typed URL</p>"
+    "<p><b>Escape</b> - Cancel URL editing</p>"
+    "<h2>Search</h2>"
+    "<p><b>Ctrl+F</b> - Find on page</p>"
+    "<p><b>N</b> - Find next match</p>"
+    "<p><b>Shift+N</b> - Find previous match</p>"
+    "<h2>Bookmarks</h2>"
+    "<p><b>Ctrl+D</b> - Bookmark current page</p>"
+    "<p><b>Ctrl+B</b> - View bookmarks</p>"
+    "<h2>Other</h2>"
+    "<p><b>F5</b> - Reload current page</p>"
+    "<p><b>Escape</b> - Quit Cathode</p>"
+    "<hr>"
+    "<p><a href=\"about:home\">Back to Start Page</a></p>"
+    "</body></html>";
+
+static const char far error_html_prefix[] =
+    "<html><head><title>Page Not Found</title></head>"
+    "<body>"
+    "<h1>Page Not Found</h1>"
+    "<p>Cathode could not load this page.</p>"
+    "<p>In this stub build, only <b>about:</b> pages are available. "
+    "HTTPS page fetching requires the NetISA card.</p>"
+    "<hr>"
+    "<p><a href=\"about:home\">Go to Start Page</a></p>"
+    "</body></html>";
+
+const char far *stub_get_html(const char *url)
 {
-    int r = 0;
+    if (strcmp(url, "about:home") == 0 || strcmp(url, "") == 0)
+        return home_html;
+    if (strcmp(url, "about:test") == 0)
+        return test_html;
+    if (strcmp(url, "about:help") == 0)
+        return help_html;
 
-    strcpy(p->title, "Feature Test Page");
-    strcpy(p->url, "about:test");
-
-    put_heading(p, r, "Test Page");
-    r += 2;
-
-    put_heading(p, r, "Text Styles");
-    r++;
-    put_str(p, r, 2, "Normal text in the default style.", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 2, "Bold text stands out for emphasis.", ATTR_BOLD, CELL_BOLD);
-    r++;
-    put_str(p, r, 2, "Error messages appear in red.", ATTR_ERROR, CELL_TEXT);
-    r++;
-    put_str(p, r, 2, "Dim text is used for secondary info.", ATTR_DIM, CELL_TEXT);
-    r += 2;
-
-    put_heading(p, r, "Links");
-    r++;
-    put_str(p, r, 2, "Click or Tab to these links:", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, "1. ", ATTR_NORMAL, CELL_TEXT);
-    put_link(p, r, 7, "Back to Start Page", "about:home");
-    r++;
-    put_str(p, r, 4, "2. ", ATTR_NORMAL, CELL_TEXT);
-    put_link(p, r, 7, "Help & Shortcuts", "about:help");
-    r++;
-    put_str(p, r, 4, "3. ", ATTR_NORMAL, CELL_TEXT);
-    put_link(p, r, 7, "NetISA on GitHub",
-             "https://github.com/tonyuatkins-afk/NetISA");
-    r += 2;
-
-    put_hrule(p, r);
-    r += 2;
-
-    put_heading(p, r, "Table Example");
-    r++;
-    {
-        int c;
-        /* Top border */
-        page_set_cell(p, r, 2, (char)0xDA, ATTR_TABLE, CELL_TEXT, 0);
-        for (c = 3; c < 22; c++)
-            page_set_cell(p, r, c, (char)0xC4, ATTR_TABLE, CELL_TEXT, 0);
-        page_set_cell(p, r, 22, (char)0xC2, ATTR_TABLE, CELL_TEXT, 0);
-        for (c = 23; c < 42; c++)
-            page_set_cell(p, r, c, (char)0xC4, ATTR_TABLE, CELL_TEXT, 0);
-        page_set_cell(p, r, 42, (char)0xBF, ATTR_TABLE, CELL_TEXT, 0);
-        r++;
-
-        /* Header row */
-        page_set_cell(p, r, 2, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        put_str(p, r, 3, " Feature           ", ATTR_HIGHLIGHT, CELL_TEXT);
-        page_set_cell(p, r, 22, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        put_str(p, r, 23, " Status             ", ATTR_HIGHLIGHT, CELL_TEXT);
-        page_set_cell(p, r, 42, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        r++;
-
-        /* Separator */
-        page_set_cell(p, r, 2, (char)0xC3, ATTR_TABLE, CELL_TEXT, 0);
-        for (c = 3; c < 22; c++)
-            page_set_cell(p, r, c, (char)0xC4, ATTR_TABLE, CELL_TEXT, 0);
-        page_set_cell(p, r, 22, (char)0xC5, ATTR_TABLE, CELL_TEXT, 0);
-        for (c = 23; c < 42; c++)
-            page_set_cell(p, r, c, (char)0xC4, ATTR_TABLE, CELL_TEXT, 0);
-        page_set_cell(p, r, 42, (char)0xB4, ATTR_TABLE, CELL_TEXT, 0);
-        r++;
-
-        /* Data rows */
-        page_set_cell(p, r, 2, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        put_str(p, r, 3, " Scrolling         ", ATTR_NORMAL, CELL_TEXT);
-        page_set_cell(p, r, 22, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        put_str(p, r, 23, " Working            ", ATTR_SELECTED, CELL_TEXT);
-        page_set_cell(p, r, 42, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        r++;
-
-        page_set_cell(p, r, 2, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        put_str(p, r, 3, " Link Navigation   ", ATTR_NORMAL, CELL_TEXT);
-        page_set_cell(p, r, 22, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        put_str(p, r, 23, " Working            ", ATTR_SELECTED, CELL_TEXT);
-        page_set_cell(p, r, 42, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        r++;
-
-        page_set_cell(p, r, 2, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        put_str(p, r, 3, " URL Bar           ", ATTR_NORMAL, CELL_TEXT);
-        page_set_cell(p, r, 22, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        put_str(p, r, 23, " Working            ", ATTR_SELECTED, CELL_TEXT);
-        page_set_cell(p, r, 42, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        r++;
-
-        page_set_cell(p, r, 2, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        put_str(p, r, 3, " HTTPS Fetch       ", ATTR_NORMAL, CELL_TEXT);
-        page_set_cell(p, r, 22, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        put_str(p, r, 23, " Stub only          ", ATTR_INPUT, CELL_TEXT);
-        page_set_cell(p, r, 42, (char)0xB3, ATTR_TABLE, CELL_TEXT, 0);
-        r++;
-
-        /* Bottom border */
-        page_set_cell(p, r, 2, (char)0xC0, ATTR_TABLE, CELL_TEXT, 0);
-        for (c = 3; c < 22; c++)
-            page_set_cell(p, r, c, (char)0xC4, ATTR_TABLE, CELL_TEXT, 0);
-        page_set_cell(p, r, 22, (char)0xC1, ATTR_TABLE, CELL_TEXT, 0);
-        for (c = 23; c < 42; c++)
-            page_set_cell(p, r, c, (char)0xC4, ATTR_TABLE, CELL_TEXT, 0);
-        page_set_cell(p, r, 42, (char)0xD9, ATTR_TABLE, CELL_TEXT, 0);
-        r++;
-    }
-    r++;
-
-    put_heading(p, r, "Bulleted List");
-    r++;
-    page_set_cell(p, r, 4, (char)0x07, ATTR_BULLET, CELL_TEXT, 0);
-    put_str(p, r, 6, "First item in the list", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    page_set_cell(p, r, 4, (char)0x07, ATTR_BULLET, CELL_TEXT, 0);
-    put_str(p, r, 6, "Second item with more detail", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    page_set_cell(p, r, 4, (char)0x07, ATTR_BULLET, CELL_TEXT, 0);
-    put_str(p, r, 6, "Third item", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    page_set_cell(p, r, 4, (char)0x07, ATTR_BULLET, CELL_TEXT, 0);
-    put_str(p, r, 6, "Fourth item for scrolling", ATTR_NORMAL, CELL_TEXT);
-    r += 2;
-
-    put_heading(p, r, "Scrolling Test");
-    r++;
-    put_str(p, r, 2,
-        "The following content extends below the visible viewport.",
-        ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 2, "Use PgDn, Down Arrow, or End to scroll.",
-            ATTR_NORMAL, CELL_TEXT);
-    r += 2;
-
-    {
-        int i;
-        for (i = 1; i <= 10; i++) {
-            char buf[40];
-            buf[0] = 'L'; buf[1] = 'i'; buf[2] = 'n'; buf[3] = 'e';
-            buf[4] = ' ';
-            buf[5] = (char)('0' + (i / 10));
-            buf[6] = (char)('0' + (i % 10));
-            buf[7] = ':'; buf[8] = ' ';
-            buf[9] = 'S'; buf[10] = 'c'; buf[11] = 'r'; buf[12] = 'o';
-            buf[13] = 'l'; buf[14] = 'l'; buf[15] = ' ';
-            buf[16] = 't'; buf[17] = 'e'; buf[18] = 's'; buf[19] = 't';
-            buf[20] = '\0';
-            put_str(p, r, 4, buf, ATTR_DIM, CELL_TEXT);
-            r++;
-        }
-    }
-
-    r++;
-    put_str(p, r, 2, "End of test page.", ATTR_DIM, CELL_TEXT);
-    r++;
-
-    p->total_rows = r + 1;
+    /* Unknown about: URL */
+    return error_html_prefix;
 }
 
-/* ===== Page 3: about:help ===== */
-static void build_help(page_buffer_t *p)
-{
-    int r = 0;
-
-    strcpy(p->title, "Keyboard Shortcuts");
-    strcpy(p->url, "about:help");
-
-    put_heading(p, r, "Cathode Keyboard Shortcuts");
-    r += 2;
-
-    put_heading(p, r, "Navigation");
-    r++;
-    put_str(p, r, 4, "Up / Down     ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Scroll one line", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, "PgUp / PgDn   ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Scroll one page (20 lines)", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, "Home / End    ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Jump to top / bottom", ATTR_NORMAL, CELL_TEXT);
-    r += 2;
-
-    put_heading(p, r, "Links");
-    r++;
-    put_str(p, r, 4, "Tab           ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Select next link", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, "Shift+Tab     ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Select previous link", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, "Enter         ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Follow selected link", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, "Backspace     ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Go back to previous page", ATTR_NORMAL, CELL_TEXT);
-    r += 2;
-
-    put_heading(p, r, "Address Bar");
-    r++;
-    put_str(p, r, 4, "F6 / Ctrl+L   ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Focus address bar", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, "Enter         ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Navigate to typed URL", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, "Escape        ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Cancel URL editing", ATTR_NORMAL, CELL_TEXT);
-    r += 2;
-
-    put_heading(p, r, "Other");
-    r++;
-    put_str(p, r, 4, "F5            ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Reload current page", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, "Escape        ", ATTR_HIGHLIGHT, CELL_TEXT);
-    put_str(p, r, 20, "Quit Cathode", ATTR_NORMAL, CELL_TEXT);
-    r += 2;
-
-    put_hrule(p, r);
-    r += 2;
-
-    put_link(p, r, 4, "Back to Start Page", "about:home");
-    r++;
-
-    p->total_rows = r + 1;
-}
-
-/* ===== Error page ===== */
-static void build_error(page_buffer_t *p, const char *url)
-{
-    int r = 2;
-
-    strcpy(p->title, "Page Not Found");
-    strncpy(p->url, url, 255);
-    p->url[255] = '\0';
-
-    put_heading(p, r, "Page Not Found");
-    r += 2;
-
-    put_str(p, r, 4, "Cathode could not load:", ATTR_NORMAL, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, url, ATTR_INPUT, CELL_TEXT);
-    r += 2;
-
-    put_str(p, r, 4, "In this stub build, only about: pages are available.",
-            ATTR_DIM, CELL_TEXT);
-    r++;
-    put_str(p, r, 4, "HTTPS page fetching requires the NetISA card.",
-            ATTR_DIM, CELL_TEXT);
-    r += 2;
-
-    put_link(p, r, 4, "Go to Start Page", "about:home");
-    r++;
-
-    p->total_rows = r + 1;
-}
-
+/* Legacy API for backwards compatibility during migration */
 int stub_fetch_page(const char *url, page_buffer_t *page)
 {
-    page_clear(page);
-
-    if (strcmp(url, "about:home") == 0 || strcmp(url, "") == 0) {
-        build_home(page);
-        return 0;
-    }
-    if (strcmp(url, "about:test") == 0) {
-        build_test(page);
-        return 0;
-    }
-    if (strcmp(url, "about:help") == 0) {
-        build_help(page);
-        return 0;
-    }
-
-    build_error(page, url);
-    return -1;
+    (void)url;
+    (void)page;
+    return -1;  /* No longer used — see stub_get_html */
 }

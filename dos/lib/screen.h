@@ -102,4 +102,8 @@ void scr_delay(int ms);
 void scr_fade_in(int steps, int step_delay_ms);
 void scr_fade_out(int steps, int step_delay_ms);
 
+/* Attribute read/write for mouse cursor support */
+unsigned char scr_getattr(int x, int y);
+void scr_setattr(int x, int y, unsigned char attr);
+
 #endif /* SCREEN_H */

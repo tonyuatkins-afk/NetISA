@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#12181a">
+<title>Barely Booting | Open-Source Hardware for Vintage PCs</title>
+<meta name="description" content="Tony Atkins builds open-source hardware for vintage PCs. NetISA brings WiFi and TLS 1.3 to DOS on 8088, 286, 386, and 486 systems.">
+<meta name="author" content="Tony Atkins">
+<meta name="keywords" content="vintage PC, retro computing, DOS, ISA card, WiFi, TLS 1.3, HTTPS, open-source hardware, NetISA, 8088, 286, 386, 486, CPLD, ESP32">
+<meta name="robots" content="index, follow">
+
+<link rel="canonical" href="https://barelybooting.com/">
+<link rel="alternate" type="application/rss+xml" title="Barely Booting Build Log" href="/feed.xml">
+
+<!-- Open Graph -->
+<meta property="og:title" content="Barely Booting | Open-Source Hardware for Vintage PCs">
+<meta property="og:description" content="Open-source hardware projects for IBM PC/XT, AT, 386, and 486 systems. Currently building NetISA: WiFi and TLS 1.3 for DOS.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://barelybooting.com/">
+<meta property="og:image" content="https://barelybooting.com/img/og-image.png">
+<meta property="og:image:alt" content="Barely Booting. Building new hardware for old computers.">
+<meta property="og:site_name" content="Barely Booting">
+<meta property="og:locale" content="en_US">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Barely Booting | Open-Source Hardware for Vintage PCs">
+<meta name="twitter:description" content="Open-source hardware projects for IBM PC/XT, AT, 386, and 486 systems. Currently building NetISA: WiFi and TLS 1.3 for DOS.">
+<meta name="twitter:image" content="https://barelybooting.com/img/og-image.png">
+<meta name="twitter:image:alt" content="Barely Booting. Building new hardware for old computers.">
+
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&display=swap">
+<link rel="stylesheet" href="/style.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://barelybooting.com/#website",
+      "url": "https://barelybooting.com/",
+      "name": "Barely Booting",
+      "description": "Open-source hardware for vintage PCs. Building new hardware for old computers.",
+      "publisher": { "@id": "https://barelybooting.com/#person" },
+      "inLanguage": "en-US"
+    },
+    {
+      "@type": "Person",
+      "@id": "https://barelybooting.com/#person",
+      "name": "Tony Atkins",
+      "url": "https://barelybooting.com/about.html",
+      "description": "Electronics builder in the Pacific Northwest. Cybersecurity professional with a passion for vintage computing hardware.",
+      "sameAs": [
+        "https://www.youtube.com/@BarelyBooting",
+        "https://github.com/tonyuatkins-afk"
+      ],
+      "knowsAbout": [
+        "Vintage computing",
+        "ISA bus hardware",
+        "CPLD design",
+        "TLS 1.3",
+        "DOS programming",
+        "Cybersecurity",
+        "Open-source hardware"
+      ]
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://barelybooting.com/#webpage",
+      "url": "https://barelybooting.com/",
+      "name": "Barely Booting | Open-Source Hardware for Vintage PCs",
+      "isPartOf": { "@id": "https://barelybooting.com/#website" },
+      "about": { "@id": "https://barelybooting.com/#person" },
+      "description": "Tony Atkins builds open-source hardware for vintage PCs. NetISA brings WiFi and TLS 1.3 to DOS on 8088, 286, 386, and 486 systems.",
+      "inLanguage": "en-US",
+      "primaryImageOfPage": {
+        "@type": "ImageObject",
+        "url": "https://barelybooting.com/img/og-image.png"
+      }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<nav class="site-nav">
+    <div class="nav-inner">
+        <a href="/" class="brand" aria-label="Barely Booting home">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+                <rect x="3" y="3" width="26" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="1.75"/>
+                <circle cx="7" cy="7" r="1.1" fill="currentColor"/>
+                <circle cx="25" cy="7" r="1.1" fill="currentColor"/>
+                <circle cx="7" cy="25" r="1.1" fill="currentColor"/>
+                <circle cx="25" cy="25" r="1.1" fill="currentColor"/>
+                <text x="16" y="21" font-family="'Courier New', ui-monospace, monospace" font-size="12" font-weight="bold" fill="currentColor" text-anchor="middle" letter-spacing="-0.5">BB</text>
+            </svg>
+            <span>BARELY BOOTING<span class="cursor">_</span></span>
+        </a>
+        <div class="nav-links">
+            <a href="/" class="active">Home</a>
+            <a href="/netisa.html">NetISA</a>
+            <a href="/takeover.html">TAKEOVER</a>
+            <a href="/log.html">Log</a>
+            <a href="/about.html">About</a>
+        </div>
+    </div>
+</nav>
+
+<main>
+    <h1>Barely Booting</h1>
+    <p class="tagline">&gt; Building new hardware for old computers.</p>
+
+    <!-- Hero: the money shot -->
+    <div class="hero-screenshots">
+        <figure>
+            <a href="/netisa.html">
+                <img src="/img/discord.gif" alt="Animated: Discord client for DOS showing #general channel with live messages appearing, color-coded usernames, timestamps, and compose bar" width="720" height="400">
+            </a>
+            <figcaption>Discord on DOS. Running over TLS 1.3 through a single ISA card.</figcaption>
+        </figure>
+        <figure>
+            <a href="/netisa.html">
+                <img src="/img/cathode.gif" alt="Animated: Cathode text-mode browser showing start page with block-letter CATHODE logo, quick links to keyboard shortcuts, feature test page, and barelybooting.com" width="720" height="400">
+            </a>
+            <figcaption>Cathode: a text-mode HTTPS browser for DOS.</figcaption>
+        </figure>
+        <figure>
+            <a href="/takeover.html">
+                <img src="/img/takeover-title.gif" alt="Animated: TAKEOVER VGA plasma title screen with green-cyan-white color cycling and pixel font logo" width="720" height="400">
+            </a>
+            <figcaption>TAKEOVER: five AI scenarios, VGA plasma visuals, AdLib FM audio. 41KB.</figcaption>
+        </figure>
+    </div>
+
+    <p>Tony Atkins builds open-source hardware and software for vintage PCs. <a href="/netisa.html">NetISA</a> is an ISA expansion card that brings TLS 1.3, WiFi, and modern internet connectivity to IBM PC/XT, AT, 386, and 486 systems. <a href="/takeover.html">TAKEOVER</a> is an AI takeover simulator for DOS where you choose an AI antagonist and watch it subvert your terminal through branching narrative. Both projects are open source and built for real hardware.</p>
+
+    <p>The goal is simple. A retro PC should be able to reach the current internet without a proxy box, without a serial bottleneck, and without compromising the hardware experience. DOS mail clients talking IMAPS to Gmail. Lynx rendering HTTPS pages from Wikipedia on a 486. <code>git clone</code> over HTTPS from a Windows 3.1 box. None of those used to work. They will.</p>
+
+    <!-- Quick specs strip -->
+    <div class="specs-strip">
+        <div class="spec-item">
+            <span class="spec-label">Bus</span>
+            <span class="spec-value">8/16-bit ISA</span>
+        </div>
+        <div class="spec-item">
+            <span class="spec-label">CPU</span>
+            <span class="spec-value">8088 &ndash; 486+</span>
+        </div>
+        <div class="spec-item">
+            <span class="spec-label">WiFi</span>
+            <span class="spec-value">802.11 b/g/n</span>
+        </div>
+        <div class="spec-item">
+            <span class="spec-label">TLS</span>
+            <span class="spec-value">1.3 (hardware)</span>
+        </div>
+        <div class="spec-item">
+            <span class="spec-label">TSR</span>
+            <span class="spec-value">&lt; 2 KB</span>
+        </div>
+        <div class="spec-item">
+            <span class="spec-label">License</span>
+            <span class="spec-value">MIT / CERN-OHL-P</span>
+        </div>
+    </div>
+
+    <h2>Follow the build</h2>
+    <ul class="link-list">
+        <li><a href="https://www.youtube.com/@BarelyBooting" rel="noopener">YouTube: @BarelyBooting</a> (build videos, progress updates)</li>
+        <li><a href="https://github.com/tonyuatkins-afk" rel="noopener">GitHub: tonyuatkins-afk</a> (source, hardware, firmware)</li>
+        <li><a href="/netisa.html">NetISA project page</a> (status, specs, architecture)</li>
+        <li><a href="/takeover.html">TAKEOVER project page</a> (AI takeover simulator for DOS)</li>
+        <li><a href="/log.html">Build log</a> (milestones, what shipped and when)</li>
+        <li><a href="/feed.xml" class="rss-link">RSS feed</a></li>
+    </ul>
+
+    <h2>Community</h2>
+    <p>Barely Booting lives where the retro community does. Find the project, ask questions, or just say hi:</p>
+    <ul class="link-list">
+        <li><a href="https://www.reddit.com/r/retrobattlestations/" rel="noopener">r/retrobattlestations</a> (project posts and discussion)</li>
+        <li><a href="https://www.vogons.org/" rel="noopener">VOGONS</a> (vintage computing forum)</li>
+        <li><a href="https://hackaday.io/" rel="noopener">Hackaday</a> (project logs)</li>
+        <li><a href="https://github.com/tonyuatkins-afk/NetISA/discussions" rel="noopener">GitHub Discussions</a> (questions, ideas, feedback)</li>
+    </ul>
+
+    <p>Want updates direct? <a href="mailto:hello@barelybooting.com?subject=Subscribe">Subscribe for build updates</a> and new posts will arrive by email when they ship.</p>
+</main>
+
+<footer class="site-footer">
+    <div class="footer-inner">
+        <div class="copyright">&copy; 2026 Tony Atkins // Barely Booting</div>
+        <div class="footer-links">
+            <a href="https://www.youtube.com/@BarelyBooting" rel="noopener">YouTube</a>
+            <a href="https://github.com/tonyuatkins-afk" rel="noopener">GitHub</a>
+            <a href="/feed.xml">RSS</a>
+        </div>
+    </div>
+</footer>
+
+<div class="lightbox" id="lightbox">
+    <span class="lightbox-close">&times;</span>
+    <img alt="">
+    <div class="lightbox-caption"></div>
+</div>
+
+<script>
+(function() {
+    var lb = document.getElementById('lightbox');
+    var lbImg = lb.querySelector('img');
+    var lbCap = lb.querySelector('.lightbox-caption');
+
+    function closeLb() { lb.classList.remove('active'); lbImg.removeAttribute('src'); }
+
+    document.querySelectorAll('.screenshots img, .hero-screenshots img').forEach(function(img) {
+        img.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            lbImg.src = this.src;
+            lbImg.alt = this.alt;
+            var fig = this.closest('figure');
+            var fc = fig ? fig.querySelector('figcaption') : null;
+            lbCap.textContent = fc ? fc.textContent : '';
+            lb.classList.add('active');
+        });
+    });
+    lb.addEventListener('click', function(e) {
+        if (e.target !== lb.querySelector('.lightbox-caption')) closeLb();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && lb.classList.contains('active')) closeLb();
+    });
+})();
+</script>
+
+</body>
+</html>
