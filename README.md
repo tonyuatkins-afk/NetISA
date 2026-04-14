@@ -44,7 +44,7 @@ The specific thing that is new: an open-source, register-mapped ISA coprocessor 
 ## Status
 
 **Phase 0:** Parts ordered, awaiting hardware. All build artifacts ready to flash.
-**Phase 1:** DOS software stack and v1 firmware complete. Tested in DOSBox-X.
+**Phase 1:** DOS software stack and v1 firmware complete. Quality-gated end-to-end (8 Fatal + 16 Significant fixed). Firmware security hardened. Tested in DOSBox-X with automated fixture tests.
 
 ### What's built
 
@@ -53,15 +53,15 @@ The specific thing that is new: an open-source, register-mapped ISA coprocessor 
 | Architecture spec | Complete | — | 2,800+ line specification covering hardware, firmware, INT 63h API, security |
 | CPLD logic (Verilog) | Complete | 3 rounds | 95/128 macrocells, full 16-bit I/O decode, JEDEC ready to program |
 | Verilog testbench | **160/160 passing** | — | Address decode, IOCHRDY, watchdog, IRQ, alias rejection, back-to-back cycles |
-| **ESP32-S3 v1 firmware** | **Complete** | **8 rounds** | WiFi, HTTP client, HTML parser, web config, SNTP, DNS, command dispatch |
-| DOS TSR (NETISA.COM) | Complete | — | 678 bytes, hooks INT 63h, presence check, stub handlers |
-| Screen library | Complete | — | Direct VGA text buffer rendering, CP437 box drawing, shared across all apps |
-| INT 63h API (netisa.h) | Complete | — | Full API definition matching spec Section 4, C wrappers with inline INT 63h |
-| Stub layer | Complete | — | Fake data for DOSBox-X testing without hardware |
-| Launcher (NETISA.EXE) | Complete | — | WiFi setup, card status, system info, full-screen CP437 UI |
-| **Cathode browser** | **v0.2** | **5 rounds** | Text-mode web browser (sort of): streaming HTML parser, HTTP/1.0 fetch, UTF-8, find on page, bookmarks, 38.5KB EXE |
-| **Discord client** | **v0.1** | **6 rounds** | Text-mode chat: channels, messages, compose, timed fake messages |
-| **Claude client** | **v0.1** | **2 rounds** | Claude AI chat with 3-mode agent system (Chat/Ask/Auto), command execution |
+| **ESP32-S3 v1 firmware** | **Complete** | **E2E + security** | WiFi, HTTP client, HTML parser, web config, SNTP, DNS, command dispatch. Security hardened: WPA2 AP, constant-time auth, per-request ISR buffers, OTA SHA256 |
+| DOS TSR (NETISA.COM) | Complete | **E2E** | 678 bytes, hooks INT 63h, presence check, stub handlers. Fixed: RNG return code |
+| Screen library | Complete | **E2E** | Direct VGA text buffer rendering, CP437 box drawing, shared across all apps. Fixed: NULL guards |
+| INT 63h API (netisa.h) | Complete | **E2E** | Full API definition matching spec Section 4, C wrappers with inline INT 63h |
+| Stub layer | Complete | **E2E** | Fake data for DOSBox-X testing without hardware. Fixed: NULL pointer guards |
+| Launcher (NETISA.EXE) | Complete | **E2E** | WiFi setup, card status, system info. Fixed: password VGA overflow, FPU 8088 safety |
+| **Cathode browser** | **v0.2** | **7 rounds** | Text-mode web browser (sort of): streaming HTML parser, HTTP/1.0 fetch, UTF-8, find on page, bookmarks, 40KB EXE. 12/12 automated fixture tests |
+| **Discord client** | **v2.0** | **E2E** | Ground-up rebuild: 128 msgs/channel, multi-line compose, Ctrl+F search, PC speaker audio, CP437 reactions, thread indicators, settings persistence. 37KB EXE |
+| **Claude client** | **v0.1** | **E2E** | Claude AI chat with 3-mode agent system (Chat/Ask/Auto), command execution. Fixed: stack overflow, command injection filter, scroll clamping |
 | DOS loopback test | Complete | — | 256-byte bus validation (NISATEST.COM) |
 
 ### Next steps
@@ -120,13 +120,13 @@ Cathode is a built-in ANSI text-mode web browser that renders modern HTTPS websi
 - **DOS side** (built): receives a cell stream, manages scrollback, renders to VGA text buffer, handles keyboard navigation
 - **ESP32 side** (built): `html_parser` module fetches URLs over HTTPS, parses HTML, converts to (char, attr) cell stream
 
-Currently runs with stub pages for testing. Key features:
-- 200-row scrollback buffer on far heap (~80KB)
-- Link navigation via Tab/Shift-Tab with visual highlighting
-- URL bar editing (F6)
-- Back/forward history (20 entries)
-- CP437 box-drawing tables, bullet lists, headings, horizontal rules
-- Quality-gated: 5 rounds of adversarial review, all Fatal/Significant bugs fixed
+A text-mode web browser for DOS. Sort of. Key features:
+- Streaming HTML parser with 90+ named entity decoder and full UTF-8→CP437 mapping
+- 200-row scrollback buffer on far heap (~80KB), scroll bar, find on page (Ctrl+F)
+- Link navigation via Tab/Shift-Tab, bookmarks (Ctrl+D/B), URL bar (F6)
+- Back/forward history, word-boundary wrapping, page truncation indicator
+- 12/12 automated fixture tests (NPR, CNN, Wikipedia, HN, OpenBSD, malformed HTML)
+- Quality-gated: 7 rounds of adversarial review + end-to-end gate. 40KB EXE
 
 ```
 CATHODE.EXE                     Start page
@@ -134,18 +134,19 @@ CATHODE.EXE about:test          Feature test page
 CATHODE.EXE about:help          Keyboard shortcuts
 ```
 
-## Discord Client
+## Discord v2
 
-A text-mode Discord client for DOS, demonstrating the NetISA card's ability to connect retro PCs to modern chat platforms. Runs with stub data and timed fake messages for DOSBox-X testing.
+Ground-up rebuild of the Discord client. 10 modules, ~2,400 lines, 37KB EXE.
 
 Key features:
-- 6 channels with per-channel far-heap message storage
-- Word-wrapped message rendering with author colors
-- Compose bar with cursor editing
-- Timed fake message injection (~5 second intervals)
-- Tab-cycling focus: Channels → Messages → Compose
-- PgUp/PgDn scrolling with scroll position tracking
-- Quality-gated: 6 rounds of adversarial review, all Fatal/Significant bugs fixed
+- 128 messages per channel (up from 32) on far heap, 8 channels
+- Multi-line compose (Shift+Enter, 3 lines), 8 hash-based author colors
+- Ctrl+F find in messages with match highlighting, N/Shift+N cycling
+- PC speaker notifications (4 types, F9 toggle), CP437 reaction display
+- Thread reply indicators, help overlay (F1), user list overlay (Alt+U)
+- DISCORD.CFG settings persistence, scroll bar, unread counts per channel
+- VGA palette fade in/out, notification title flash, Alt+1-8 quick channel switch
+- Quality-gated via end-to-end review
 
 ```
 DISCORD.EXE                     Launches Discord client
@@ -161,8 +162,9 @@ Key features:
 - Word-wrapped chat rendering with newline support
 - 3-line compose area with cursor editing
 - [EXEC] tag parsing for command execution with stdout capture
-- Iterative agent loop with 5-deep safety cap (no recursive stack growth)
-- Quality-gated: 2 rounds of adversarial review
+- Iterative agent loop with 5-deep safety cap (static buffers, no stack growth)
+- Shell metacharacter filtering on command execution
+- Quality-gated via end-to-end review: stack overflow, command injection, scroll clamping fixed
 
 ```
 CLAUDE.EXE                      Launches Claude client
