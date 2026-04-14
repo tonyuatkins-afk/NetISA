@@ -1,5 +1,5 @@
 /*
- * main.c - Cathode v0.2 text-mode document browser entry point
+ * main.c - Cathode v0.2 text-mode web browser (sort of) entry point
  *
  * Usage: CATHODE [url]
  *   If url provided, navigate to it.

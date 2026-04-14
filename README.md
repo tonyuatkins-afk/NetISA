@@ -13,7 +13,7 @@ NetISA is an open-source 8/16-bit ISA expansion card that gives IBM PC/XT/AT and
 | | |
 |---|---|
 | ![NetISA Discord client running in DOS, showing the #general channel of Retro Computing Hub with color-coded usernames, timestamps, and a compose bar](docs/img/discord.png) | ![Cathode text-mode web browser start page in DOS with ASCII art logo, quick links, and version 0.1](docs/img/cathode.png) |
-| Discord client for DOS | Cathode v0.2 document browser |
+| Discord client for DOS | Cathode v0.2 web browser (sort of) |
 | ![Claude for DOS splash screen with block-art CLAUDE logo, tagline, and version info](docs/img/claude-splash.png) | ![Claude for DOS chat interface with welcome message and compose area](docs/img/claude-chat.png) |
 | Claude for DOS — splash screen | Claude for DOS — chat interface |
 | ![NetISA control panel WiFi setup screen showing scanned networks with signal strength bars, security type, and channel number](docs/img/wifi-setup.png) | ![NetISA control panel card status showing network info, firmware version, uptime, and system details](docs/img/card-status.png) |
@@ -59,7 +59,7 @@ The specific thing that is new: an open-source, register-mapped ISA coprocessor 
 | INT 63h API (netisa.h) | Complete | — | Full API definition matching spec Section 4, C wrappers with inline INT 63h |
 | Stub layer | Complete | — | Fake data for DOSBox-X testing without hardware |
 | Launcher (NETISA.EXE) | Complete | — | WiFi setup, card status, system info, full-screen CP437 UI |
-| **Cathode browser** | **v0.2** | **5 rounds** | Text-mode document browser: streaming HTML parser, HTTP/1.0 fetch, UTF-8, find on page, bookmarks, 38.5KB EXE |
+| **Cathode browser** | **v0.2** | **5 rounds** | Text-mode web browser (sort of): streaming HTML parser, HTTP/1.0 fetch, UTF-8, find on page, bookmarks, 38.5KB EXE |
 | **Discord client** | **v0.1** | **6 rounds** | Text-mode chat: channels, messages, compose, timed fake messages |
 | **Claude client** | **v0.1** | **2 rounds** | Claude AI chat with 3-mode agent system (Chat/Ask/Auto), command execution |
 | DOS loopback test | Complete | — | 256-byte bus validation (NISATEST.COM) |
