@@ -206,12 +206,10 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
         uint8_t val;
 
         if (reg == 0x04) {
-            /* Data port: deliver response bytes sequentially */
-            if (cmd_response_ready) {
-            /* Memory barrier: ensure we see the response data written
-             * by cmd_handler_task before the flag was set. */
+            /* Data port: deliver response bytes sequentially.
+             * S-04 fix: memory barrier BEFORE reading the flag ensures we
+             * see the response data written by cmd_handler_task. */
             __sync_synchronize();
-            }
             if (cmd_response_ready && resp_read_pos < cmd_response.data_len) {
                 val = cmd_response.data[resp_read_pos++];
                 /* Update response length remaining in registers */
@@ -229,9 +227,10 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
                 val = 0x00;
             }
         } else if (reg == 0x00) {
-            /* Status register: update RESP_READY bit from flag */
+            /* Status register: update RESP_READY bit from flag.
+             * S-04 fix: memory barrier BEFORE reading the flag. */
+            __sync_synchronize();
             if (cmd_response_ready) {
-                __sync_synchronize();
                 registers[0x00] |= 0x02;   /* RESP_READY */
                 /* S5 fix: report remaining bytes, not total, consistent
                  * with the reg 0x04 read path */
@@ -280,8 +279,8 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
                 staging_len = 0;
             } else {
                 /* Build command request and enqueue for handler task.
-                 * Copy full staging buffer into cmd_data_buf for
-                 * data-heavy commands (S1 fix: URLs can be ~256 bytes). */
+                 * Copy full staging buffer into per-request data field
+                 * for data-heavy commands (S1 fix: URLs can be ~256 bytes). */
                 cmd_request_t req;
                 req.group = (val >> 4) & 0x0F;
                 req.function = val & 0x0F;
@@ -290,11 +289,11 @@ static void IRAM_ATTR pstrobe_isr(void *arg)
                 for (int i = 0; i < req.param_len; i++) {
                     req.params[i] = staging_buf[i];
                 }
-                /* Copy full staging data for handlers that need >16 bytes */
-                cmd_data_len = (staging_len > CMD_DATA_MAX) ?
+                /* F-01 fix: copy full staging data into per-request buffer */
+                req.data_len = (staging_len > CMD_DATA_MAX) ?
                                CMD_DATA_MAX : staging_len;
-                for (int i = 0; i < cmd_data_len; i++) {
-                    cmd_data_buf[i] = staging_buf[i];
+                for (int i = 0; i < req.data_len; i++) {
+                    req.data[i] = staging_buf[i];
                 }
 
                 /* Clear CMD_READY while processing */

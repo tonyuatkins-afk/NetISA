@@ -11,6 +11,10 @@
 static const char *TAG = "nv_config";
 static const char *NVS_NAMESPACE = "netisa";
 
+/* TODO: Enable NVS encryption for credential protection.
+ * ESP-IDF supports encrypted NVS via nvs_flash_secure_init()
+ * with a key partition. See ESP-IDF docs: "NVS Encryption".
+ * For now, credentials are stored in plaintext NVS. */
 esp_err_t nv_config_init(void)
 {
     esp_err_t ret = nvs_flash_init();

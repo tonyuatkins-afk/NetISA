@@ -75,6 +75,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         current_state = WIFI_STATE_CONNECTED;
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
 
+        /* F-02 fix: disable AP after station connects */
+        esp_wifi_set_mode(WIFI_MODE_STA);
+        ESP_LOGI(TAG, "Station connected, disabling setup AP");
+
         /* Start SNTP after getting IP */
         time_sync_init();
     }
@@ -88,13 +92,21 @@ static esp_err_t start_ap_mode(void)
             .ssid_len = 12,
             .channel = 1,
             .max_connection = 4,
-            .authmode = WIFI_AUTH_OPEN,
+            .authmode = WIFI_AUTH_WPA2_PSK,
+            .password = "",  /* will be set below */
         },
     };
 
+    /* F-02 fix: generate device-unique AP password from MAC address */
+    uint8_t mac[6];
+    esp_wifi_get_mac(WIFI_IF_AP, mac);
+    snprintf((char *)ap_config.ap.password, sizeof(ap_config.ap.password),
+             "NetISA-%02X%02X%02X%02X", mac[2], mac[3], mac[4], mac[5]);
+    ap_config.ap.password[sizeof(ap_config.ap.password) - 1] = '\0';
+
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
     current_state = WIFI_STATE_AP_MODE;
-    ESP_LOGI(TAG, "AP started: NetISA-Setup (no password)");
+    ESP_LOGI(TAG, "AP started: NetISA-Setup (password: %s)", (char *)ap_config.ap.password);
     return ESP_OK;
 }
 

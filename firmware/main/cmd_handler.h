@@ -22,6 +22,8 @@ typedef struct {
     uint8_t function;       /* Full AH value from DOS */
     uint8_t params[CMD_PARAM_MAX];
     uint8_t param_len;
+    uint8_t data[CMD_DATA_MAX];    /* Per-request data copy (F-01 fix) */
+    uint16_t data_len;              /* Per-request data length (F-01 fix) */
 } cmd_request_t;
 
 typedef struct {
@@ -39,10 +41,6 @@ extern QueueHandle_t cmd_queue;
 /* Shared response buffer (handler task -> ISR) */
 extern volatile cmd_response_t cmd_response;
 extern volatile int cmd_response_ready;
-
-/* Large command data buffer (ISR fills from staging_buf before enqueue) */
-extern volatile uint8_t cmd_data_buf[CMD_DATA_MAX];
-extern volatile int cmd_data_len;
 
 void cmd_handler_init(void);
 void cmd_handler_task(void *arg);

@@ -33,8 +33,7 @@ static const char *TAG = "cmd_handler";
 QueueHandle_t cmd_queue = NULL;
 volatile cmd_response_t cmd_response;
 volatile int cmd_response_ready = 0;
-volatile uint8_t cmd_data_buf[CMD_DATA_MAX];
-volatile int cmd_data_len = 0;
+/* F-01 fix: cmd_data_buf/cmd_data_len removed; data now embedded in cmd_request_t */
 
 /* ===== Group 0x00: System ===== */
 
@@ -184,11 +183,11 @@ static void handle_wifi(const cmd_request_t *req, cmd_response_t *resp)
 static void handle_http(const cmd_request_t *req, cmd_response_t *resp)
 {
     switch (req->function) {
-    case 0x00: {  /* HTTP GET - URL passed via staging buffer (cmd_data_buf) */
+    case 0x00: {  /* HTTP GET - URL passed via staging buffer (F-01: per-request data) */
         char url[256];
-        int url_len = cmd_data_len;
+        int url_len = req->data_len;
         if (url_len > 255) url_len = 255;
-        memcpy(url, (const void *)cmd_data_buf, url_len);
+        memcpy(url, req->data, url_len);
         url[url_len] = '\0';
 
         int session = http_open_get(url);
@@ -275,11 +274,11 @@ static void handle_cert(const cmd_request_t *req, cmd_response_t *resp)
 static void handle_dns(const cmd_request_t *req, cmd_response_t *resp)
 {
     switch (req->function) {
-    case 0x00: {  /* Resolve hostname (IPv4) - uses cmd_data_buf for long names */
+    case 0x00: {  /* Resolve hostname (IPv4) - F-01: per-request data */
         char hostname[128];
-        int len = cmd_data_len;
+        int len = req->data_len;
         if (len > 127) len = 127;
-        memcpy(hostname, (const void *)cmd_data_buf, len);
+        memcpy(hostname, req->data, len);
         hostname[len] = '\0';
 
         uint32_t ip;
@@ -399,7 +398,8 @@ static const cmd_handler_fn handlers[8] = {
 
 void cmd_handler_init(void)
 {
-    cmd_queue = xQueueCreate(8, sizeof(cmd_request_t));
+    /* F-01 fix: reduced from 8 to 4 entries; each entry is now ~277 bytes */
+    cmd_queue = xQueueCreate(4, sizeof(cmd_request_t));
     if (!cmd_queue) {
         ESP_LOGE(TAG, "Failed to create command queue");
         return;

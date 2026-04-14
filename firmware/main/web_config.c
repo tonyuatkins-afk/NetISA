@@ -19,30 +19,53 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "cJSON.h"
+#include "mbedtls/sha256.h"
 #include <string.h>
+#include <stdio.h>
 #include <stdbool.h>
 
 static const char *TAG = "web_config";
 static httpd_handle_t server = NULL;
 
 /**
+ * F-03 fix: constant-time string comparison to prevent timing attacks
+ * on admin/OTA key verification.
+ */
+static bool ct_strcmp(const char *a, const char *b)
+{
+    volatile unsigned char result = 0;
+    size_t len_a = strlen(a);
+    size_t len_b = strlen(b);
+    size_t max_len = len_a > len_b ? len_a : len_b;
+    size_t i;
+
+    result |= (unsigned char)(len_a ^ len_b);
+    for (i = 0; i < max_len; i++) {
+        unsigned char ca = i < len_a ? (unsigned char)a[i] : 0;
+        unsigned char cb = i < len_b ? (unsigned char)b[i] : 0;
+        result |= ca ^ cb;
+    }
+    return result == 0;
+}
+
+/**
  * Admin auth helper (S2 fix): checks X-Admin-Key header against NVS "ota_key".
- * Returns true if authorized. If no admin key is configured (first-time setup),
- * all requests are allowed.
+ * Returns true if authorized. F-02 fix: if no admin key is configured,
+ * deny access (must set key first via /set-ota-key).
  */
 static bool check_admin_auth(httpd_req_t *req)
 {
     char stored_key[65] = {0};
     esp_err_t ret = nv_config_get_string("ota_key", stored_key, sizeof(stored_key));
 
-    /* No key configured: first-time setup mode, allow all */
+    /* F-02 fix: No key configured — must set key first via /set-ota-key */
     if (ret != ESP_OK || strlen(stored_key) == 0) {
-        return true;
+        return false;
     }
 
     char hdr_key[65] = {0};
     if (httpd_req_get_hdr_value_str(req, "X-Admin-Key", hdr_key, sizeof(hdr_key)) != ESP_OK
-        || strcmp(hdr_key, stored_key) != 0) {
+        || !ct_strcmp(hdr_key, stored_key)) {
         return false;
     }
     return true;
@@ -53,10 +76,10 @@ static bool check_admin_auth(httpd_req_t *req)
  * Must be called before returning from POST handlers that reject
  * the request after sending an error response (e.g., auth failure).
  */
-static void drain_request_body(httpd_req_t *req)
+static void drain_request_body(httpd_req_t *req, int already_read)
 {
     char discard[256];
-    int remaining = req->content_len;
+    int remaining = req->content_len - already_read;
     while (remaining > 0) {
         int toread = remaining < (int)sizeof(discard) ? remaining : (int)sizeof(discard);
         int ret = httpd_req_recv(req, discard, toread);
@@ -314,7 +337,7 @@ static esp_err_t scan_handler(httpd_req_t *req)
 static esp_err_t connect_handler(httpd_req_t *req)
 {
     if (!check_admin_auth(req)) {
-        drain_request_body(req);
+        drain_request_body(req, 0);
         return send_admin_auth_error(req);
     }
 
@@ -326,13 +349,13 @@ static esp_err_t connect_handler(httpd_req_t *req)
     ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (ret <= 0) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No data");
-        drain_request_body(req);
+        drain_request_body(req, 0);
         return ESP_FAIL;
     }
     buf[ret] = '\0';
 
     /* Drain any remaining body beyond our 255-byte read buffer */
-    drain_request_body(req);
+    drain_request_body(req, ret);
 
     /* Parse ssid= and password= from URL-encoded form data */
     if (httpd_query_key_value(buf, "ssid", ssid, sizeof(ssid)) != ESP_OK) {
@@ -364,7 +387,7 @@ static esp_err_t connect_handler(httpd_req_t *req)
 static esp_err_t disconnect_handler(httpd_req_t *req)
 {
     if (!check_admin_auth(req)) {
-        drain_request_body(req);
+        drain_request_body(req, 0);
         return send_admin_auth_error(req);
     }
 
@@ -393,13 +416,13 @@ static esp_err_t set_ota_key_handler(httpd_req_t *req)
     ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (ret <= 0) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No data");
-        drain_request_body(req);
+        drain_request_body(req, 0);
         return ESP_FAIL;
     }
     buf[ret] = '\0';
 
     /* Drain any remaining body beyond our 255-byte read buffer */
-    drain_request_body(req);
+    drain_request_body(req, ret);
 
     if (httpd_query_key_value(buf, "key", key, sizeof(key)) != ESP_OK || strlen(key) == 0) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing key");
@@ -408,7 +431,9 @@ static esp_err_t set_ota_key_handler(httpd_req_t *req)
 
     url_decode_in_place(key);
 
-    /* S1 fix: If an admin key already exists, require the old key to change it */
+    /* S1 fix: If an admin key already exists, require the old key to change it.
+     * F-02 fix: If no key exists, allow initial set without auth (setup flow).
+     * F-03 fix: Use constant-time comparison for key checks. */
     char stored_key[65] = {0};
     esp_err_t key_ret = nv_config_get_string("ota_key", stored_key, sizeof(stored_key));
     if (key_ret == ESP_OK && strlen(stored_key) > 0) {
@@ -419,24 +444,25 @@ static esp_err_t set_ota_key_handler(httpd_req_t *req)
         if (httpd_query_key_value(buf, "old_key", old_key, sizeof(old_key)) == ESP_OK) {
             url_decode_in_place(old_key);
         }
-        if (strlen(old_key) > 0 && strcmp(old_key, stored_key) == 0) {
+        if (strlen(old_key) > 0 && ct_strcmp(old_key, stored_key)) {
             authorized = true;
         }
         if (!authorized) {
             char hdr_key[65] = {0};
             if (httpd_req_get_hdr_value_str(req, "X-Admin-Key", hdr_key, sizeof(hdr_key)) == ESP_OK
-                && strcmp(hdr_key, stored_key) == 0) {
+                && ct_strcmp(hdr_key, stored_key)) {
                 authorized = true;
             }
         }
         if (!authorized) {
             ESP_LOGW(TAG, "set-ota-key rejected: invalid or missing old_key");
-            drain_request_body(req);
+            drain_request_body(req, req->content_len);
             httpd_resp_send_err(req, HTTPD_403_FORBIDDEN,
                                 "Current admin key required (old_key field or X-Admin-Key header)");
             return ESP_FAIL;
         }
     }
+    /* else: no key configured yet — allow initial key setup without auth (F-02) */
 
     esp_err_t err = nv_config_set_string("ota_key", key);
     cJSON *root = cJSON_CreateObject();
@@ -462,34 +488,35 @@ static esp_err_t update_handler(httpd_req_t *req)
         ESP_LOGW(TAG, "OTA rejected: no OTA password configured in NVS");
         httpd_resp_send_err(req, HTTPD_403_FORBIDDEN,
                             "OTA disabled: set an OTA password first");
-        drain_request_body(req);
+        drain_request_body(req, 0);
         return ESP_FAIL;
     }
 
-    /* Accept either X-Admin-Key or legacy X-OTA-Key header */
+    /* Accept either X-Admin-Key or legacy X-OTA-Key header
+     * F-03 fix: use constant-time comparison */
     bool authorized = false;
     char hdr_key[65] = {0};
     if (httpd_req_get_hdr_value_str(req, "X-Admin-Key", hdr_key, sizeof(hdr_key)) == ESP_OK
-        && strcmp(hdr_key, stored_key) == 0) {
+        && ct_strcmp(hdr_key, stored_key)) {
         authorized = true;
     }
     if (!authorized) {
         memset(hdr_key, 0, sizeof(hdr_key));
         if (httpd_req_get_hdr_value_str(req, "X-OTA-Key", hdr_key, sizeof(hdr_key)) == ESP_OK
-            && strcmp(hdr_key, stored_key) == 0) {
+            && ct_strcmp(hdr_key, stored_key)) {
             authorized = true;
         }
     }
     if (!authorized) {
         ESP_LOGW(TAG, "OTA rejected: invalid or missing admin key");
         httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "Invalid admin key");
-        drain_request_body(req);
+        drain_request_body(req, 0);
         return ESP_FAIL;
     }
 
     if (req->content_len <= 0) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty firmware image");
-        drain_request_body(req);
+        drain_request_body(req, 0);
         return ESP_FAIL;
     }
 
@@ -504,12 +531,17 @@ static esp_err_t update_handler(httpd_req_t *req)
     update_partition = esp_ota_get_next_update_partition(NULL);
     if (!update_partition) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No OTA partition");
-        drain_request_body(req);
+        drain_request_body(req, 0);
         return ESP_FAIL;
     }
 
     ESP_LOGI(TAG, "OTA update: %d bytes to partition %s",
              remaining, update_partition->label);
+
+    /* S-06: SHA256 hash verification for OTA uploads */
+    mbedtls_sha256_context sha_ctx;
+    mbedtls_sha256_init(&sha_ctx);
+    mbedtls_sha256_starts(&sha_ctx, 0);  /* 0 = SHA256, not SHA224 */
 
     while (remaining > 0) {
         received = httpd_req_recv(req, buf, sizeof(buf));
@@ -518,6 +550,7 @@ static esp_err_t update_handler(httpd_req_t *req)
             if (!first_chunk) {
                 esp_ota_abort(ota_handle);
             }
+            mbedtls_sha256_free(&sha_ctx);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Receive error");
             return ESP_FAIL;
         }
@@ -527,7 +560,8 @@ static esp_err_t update_handler(httpd_req_t *req)
                                 &ota_handle);
             if (err != ESP_OK) {
                 ESP_LOGE(TAG, "OTA begin failed: %s", esp_err_to_name(err));
-                drain_request_body(req);
+                mbedtls_sha256_free(&sha_ctx);
+                drain_request_body(req, req->content_len - remaining + received);
                 httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                                     "OTA begin failed");
                 return ESP_FAIL;
@@ -539,13 +573,37 @@ static esp_err_t update_handler(httpd_req_t *req)
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "OTA write failed: %s", esp_err_to_name(err));
             esp_ota_abort(ota_handle);
-            drain_request_body(req);
+            mbedtls_sha256_free(&sha_ctx);
+            drain_request_body(req, req->content_len - remaining);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                                 "OTA write failed");
             return ESP_FAIL;
         }
 
+        mbedtls_sha256_update(&sha_ctx, (const unsigned char *)buf, received);
         remaining -= received;
+    }
+
+    /* S-06: Finalize SHA256 and verify against expected hash if provided */
+    unsigned char sha256[32];
+    mbedtls_sha256_finish(&sha_ctx, sha256);
+    mbedtls_sha256_free(&sha_ctx);
+
+    char expected_hash[65] = {0};
+    if (httpd_req_get_hdr_value_str(req, "X-Firmware-SHA256", expected_hash, sizeof(expected_hash)) == ESP_OK) {
+        /* Convert computed hash to hex string and compare */
+        char computed_hex[65];
+        for (int i = 0; i < 32; i++) {
+            sprintf(computed_hex + i * 2, "%02x", sha256[i]);
+        }
+        if (!ct_strcmp(computed_hex, expected_hash)) {
+            esp_ota_abort(ota_handle);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "SHA256 mismatch");
+            return ESP_FAIL;
+        }
+        ESP_LOGI(TAG, "OTA SHA256 verified: %s", computed_hex);
+    } else {
+        ESP_LOGW(TAG, "No X-Firmware-SHA256 header; skipping hash verification");
     }
 
     err = esp_ota_end(ota_handle);
@@ -584,7 +642,7 @@ static esp_err_t update_handler(httpd_req_t *req)
 static esp_err_t restart_handler(httpd_req_t *req)
 {
     if (!check_admin_auth(req)) {
-        drain_request_body(req);
+        drain_request_body(req, 0);
         return send_admin_auth_error(req);
     }
 

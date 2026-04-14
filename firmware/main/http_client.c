@@ -11,9 +11,12 @@
 #include "esp_tls.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include <string.h>
 
 static const char *TAG = "http_client";
+static SemaphoreHandle_t session_mutex = NULL;
 
 typedef struct {
     esp_http_client_handle_t handle;
@@ -28,10 +31,12 @@ static http_session_t sessions[MAX_SESSIONS];
 
 void http_client_init(void)
 {
+    session_mutex = xSemaphoreCreateMutex();
     memset(sessions, 0, sizeof(sessions));
     ESP_LOGI(TAG, "HTTP client initialized (%d session slots)", MAX_SESSIONS);
 }
 
+/* find_free_slot: caller must hold session_mutex */
 static int find_free_slot(void)
 {
     for (int i = 0; i < MAX_SESSIONS; i++) {
@@ -43,11 +48,22 @@ static int find_free_slot(void)
 static int open_session(const char *url, esp_http_client_method_t method,
                         const char *body, int body_len)
 {
+    if (!session_mutex) session_mutex = xSemaphoreCreateMutex();
+
+    if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        ESP_LOGE(TAG, "Session mutex timeout");
+        return -1;
+    }
+
     int slot = find_free_slot();
     if (slot < 0) {
+        xSemaphoreGive(session_mutex);
         ESP_LOGE(TAG, "No free session slots");
         return -1;
     }
+    /* Mark slot in-use while still holding the mutex to prevent races */
+    sessions[slot].in_use = true;
+    xSemaphoreGive(session_mutex);
 
     esp_http_client_config_t config = {
         .url = url,
@@ -56,11 +72,13 @@ static int open_session(const char *url, esp_http_client_method_t method,
         .timeout_ms = 10000,
         .buffer_size = 4096,
         .buffer_size_tx = 1024,
+        .max_redirection_count = 5,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) {
         ESP_LOGE(TAG, "Failed to create HTTP client");
+        sessions[slot].in_use = false;
         return -1;
     }
 
@@ -75,6 +93,7 @@ static int open_session(const char *url, esp_http_client_method_t method,
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP open failed: %s", esp_err_to_name(err));
         esp_http_client_cleanup(client);
+        sessions[slot].in_use = false;
         return -1;
     }
 
@@ -84,6 +103,7 @@ static int open_session(const char *url, esp_http_client_method_t method,
         if (written < 0) {
             ESP_LOGE(TAG, "HTTP write failed");
             esp_http_client_cleanup(client);
+            sessions[slot].in_use = false;
             return -1;
         }
     }
@@ -92,7 +112,6 @@ static int open_session(const char *url, esp_http_client_method_t method,
     int content_length = esp_http_client_fetch_headers(client);
 
     sessions[slot].handle = client;
-    sessions[slot].in_use = true;
     sessions[slot].status_code = esp_http_client_get_status_code(client);
     sessions[slot].content_length = content_length;
     sessions[slot].bytes_read = 0;
@@ -124,7 +143,10 @@ int http_read(int session_id, char *buf, int bufsize)
 
     int read = esp_http_client_read(sessions[session_id].handle, buf, bufsize);
     if (read > 0) {
-        sessions[session_id].bytes_read += read;
+        if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            sessions[session_id].bytes_read += read;
+            xSemaphoreGive(session_mutex);
+        }
     }
     return read;
 }
@@ -143,8 +165,12 @@ void http_close(int session_id)
 
     esp_http_client_close(sessions[session_id].handle);
     esp_http_client_cleanup(sessions[session_id].handle);
-    sessions[session_id].handle = NULL;
-    sessions[session_id].in_use = false;
+
+    if (xSemaphoreTake(session_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        sessions[session_id].handle = NULL;
+        sessions[session_id].in_use = false;
+        xSemaphoreGive(session_mutex);
+    }
 
     ESP_LOGI(TAG, "Session %d closed (%d bytes read)",
              session_id, sessions[session_id].bytes_read);
