@@ -322,6 +322,24 @@ discord\DISCORD.EXE     (launches Discord client)
 claude\CLAUDE.EXE       (launches Claude AI client)
 ```
 
+### Automated testing with the development relay
+
+The `devenv/` directory contains a DOSBox-X relay that lets you compile, run, and test DOS programs from the Windows command line or Claude Code:
+
+```bash
+# Run a DOS command and capture output
+python devenv\dosrun.py "VER"
+python devenv\dosrun.py "DIR C:\" "ECHO Hello"
+
+# Assemble and run a test program
+python devenv\dosbuild.py --asm phase0\dos\nisatest.asm --run NISATEST.COM
+
+# Run Cathode's HTML parser test suite (11 fixtures, 12 tests)
+python devenv\dosrun.py --timeout 120 --cwd \dos "RUNTESTS.EXE"
+```
+
+See `devenv/README.md` for full usage and architecture.
+
 See [Phase 0 README](phase0/README.md) for hardware build instructions and wiring guide.
 
 ## Community
