@@ -1,178 +1,272 @@
 /*
- * input_dc.c - Keyboard handler for Discord client
+ * input_dc.c - Keyboard handler for Discord v2 DOS client
  *
- * Handles focus rotation, channel selection, message scrolling,
- * compose bar editing, and global shortcuts.
+ * Single entry point: dc_handle_key() routes all keyboard input
+ * based on current focus state. Global shortcuts are checked first,
+ * then search mode, then overlay dismissal, then focus-specific.
+ *
+ * Target: 8088, OpenWatcom C, small memory model.
  */
 
 #include "discord.h"
 #include <string.h>
 
-/* Extended key codes */
-#define KEY_PGUP    0x4900
-#define KEY_PGDN    0x5100
-#define KEY_F1      0x3B00
-#define KEY_F5      0x3F00
-#define KEY_DELETE  0x5300
-
-/* Ctrl+Q = 0x11 (ASCII DC1) */
-#define KEY_CTRL_Q  0x11
-
-/* Compose bar key handling */
-static void compose_key(dc_state_t *s, int key)
+/* Count newline characters in compose buffer to derive line count */
+static int compose_lines(const char *buf, int len)
 {
-    int ch = key & 0xFF;
-    int scan = key & 0xFF00;
-
-    /* Enter: send message */
-    if (ch == 0x0D) {
-        if (s->compose.len > 0)
-            dc_send_message(s, s->compose.buf);
-        return;
+    int n = 1;
+    int i;
+    for (i = 0; i < len; i++) {
+        if (buf[i] == '\n') n++;
     }
+    return n;
+}
 
-    /* Escape: clear compose */
-    if (ch == 0x1B) {
-        s->compose.buf[0] = '\0';
-        s->compose.len = 0;
-        s->compose.cursor = 0;
-        return;
-    }
-
-    /* Tab: rotate focus */
-    if (ch == 0x09) {
-        s->focus = DC_FOCUS_CHANNELS;
-        return;
-    }
-
-    /* Backspace */
-    if (ch == 0x08) {
-        if (s->compose.cursor > 0) {
-            int i;
-            s->compose.cursor--;
-            for (i = s->compose.cursor; i < s->compose.len - 1; i++)
-                s->compose.buf[i] = s->compose.buf[i + 1];
-            s->compose.len--;
-            s->compose.buf[s->compose.len] = '\0';
-        }
-        return;
-    }
-
-    /* Extended keys */
-    if (ch == 0) {
-        switch (scan) {
-        case KEY_LEFT:
-            if (s->compose.cursor > 0) s->compose.cursor--;
-            break;
-        case KEY_RIGHT:
-            if (s->compose.cursor < s->compose.len) s->compose.cursor++;
-            break;
-        case 0x4700: /* Home */
-            s->compose.cursor = 0;
-            break;
-        case 0x4F00: /* End */
-            s->compose.cursor = s->compose.len;
-            break;
-        case KEY_DELETE:
-            if (s->compose.cursor < s->compose.len) {
-                int i;
-                for (i = s->compose.cursor; i < s->compose.len - 1; i++)
-                    s->compose.buf[i] = s->compose.buf[i + 1];
-                s->compose.len--;
-                s->compose.buf[s->compose.len] = '\0';
-            }
-            break;
-        }
-        return;
-    }
-
-    /* Printable character */
-    if (ch >= 0x20 && ch < 0x7F && s->compose.len < DC_MAX_COMPOSE) {
-        int i;
-        for (i = s->compose.len; i > s->compose.cursor; i--)
-            s->compose.buf[i] = s->compose.buf[i - 1];
-        s->compose.buf[s->compose.cursor] = (char)ch;
-        s->compose.cursor++;
-        s->compose.len++;
-        s->compose.buf[s->compose.len] = '\0';
-    }
+/* Maximum scroll offset for message view */
+static int msg_scroll_max(dc_state_t *s)
+{
+    int max = s->msg_count - DC_CONTENT_ROWS;
+    return (max > 0) ? max : 0;
 }
 
 void dc_handle_key(dc_state_t *s, int key)
 {
-    int ch = key & 0xFF;
-    int scan = key & 0xFF00;
+    /* ============================================================
+     * Global shortcuts (checked first, regardless of focus)
+     * ============================================================ */
 
-    /* Global: Ctrl+Q = quit */
-    if (ch == KEY_CTRL_Q) {
+    /* Ctrl+Q: quit */
+    if (key == KEY_CTRL_Q) {
         s->running = 0;
         return;
     }
 
-    /* Global: Alt+1-9 quick channel switch */
-    if (ch == 0 && scan >= 0x7800 && scan <= 0x8000) {
-        /* Alt+1 = 0x7800, Alt+2 = 0x7900, ... Alt+9 = 0x8000 */
-        int idx = (scan - 0x7800) >> 8;
-        if (idx < s->channel_count) {
-            dc_switch_channel(s, idx);
-            s->focus = DC_FOCUS_COMPOSE;
-        }
+    /* F1: toggle help overlay */
+    if (key == KEY_F1) {
+        s->show_help = !s->show_help;
+        s->dirty = 1;
         return;
     }
 
-    /* Dispatch by focus */
+    /* F9: toggle sound */
+    if (key == KEY_F9) {
+        s->config.sound = !s->config.sound;
+        s->dirty = 1;
+        return;
+    }
+
+    /* Alt+U: toggle user list overlay */
+    if (key == KEY_ALT_U) {
+        s->show_userlist = !s->show_userlist;
+        s->dirty = 1;
+        return;
+    }
+
+    /* Alt+1 through Alt+8: quick channel switch */
+    if (key >= KEY_ALT_1 && key <= KEY_ALT_8) {
+        int ch = (key >> 8) - 0x78;
+        if (ch < s->channel_count) {
+            dc_switch_channel(s, ch);
+        }
+        s->dirty = 1;
+        return;
+    }
+
+    /* Tab: cycle focus CHANNELS -> MESSAGES -> COMPOSE -> CHANNELS */
+    if (key == KEY_TAB) {
+        s->focus++;
+        if (s->focus > DC_FOCUS_COMPOSE)
+            s->focus = DC_FOCUS_CHANNELS;
+        s->dirty = 1;
+        return;
+    }
+
+    /* Ctrl+F: open search */
+#if FEAT_SEARCH
+    if (key == KEY_CTRL_F) {
+        dc_search_open(s);
+        s->dirty = 1;
+        return;
+    }
+#endif
+
+    /* ============================================================
+     * Search mode: route keys to search handler
+     * ============================================================ */
+#if FEAT_SEARCH
+    if (s->search.active) {
+        dc_search_handle_key(s, key);
+        s->dirty = 1;
+        return;
+    }
+#endif
+
+    /* ============================================================
+     * Overlay dismissal: any key closes help or user list
+     * ============================================================ */
+    if (s->show_help) {
+        s->show_help = 0;
+        s->dirty = 1;
+        return;
+    }
+
+    if (s->show_userlist) {
+        s->show_userlist = 0;
+        s->dirty = 1;
+        return;
+    }
+
+    /* ============================================================
+     * Focus-specific handlers
+     * ============================================================ */
     switch (s->focus) {
+
+    /* --------------------------------------------------------
+     * Channel list navigation
+     * -------------------------------------------------------- */
     case DC_FOCUS_CHANNELS:
-        if (ch == 0x09) {  /* Tab */
-            s->focus = DC_FOCUS_MESSAGES;
-            return;
-        }
-        if (ch == 0x0D) {  /* Enter */
+        if (key == KEY_UP) {
+            s->selected_channel--;
+            if (s->selected_channel < 0)
+                s->selected_channel = s->channel_count - 1;
+            s->dirty = 1;
+        } else if (key == KEY_DOWN) {
+            s->selected_channel++;
+            if (s->selected_channel >= s->channel_count)
+                s->selected_channel = 0;
+            s->dirty = 1;
+        } else if (key == KEY_ENTER) {
             dc_switch_channel(s, s->selected_channel);
-            s->focus = DC_FOCUS_COMPOSE;
-            return;
-        }
-        if (ch == 0) {
-            switch (scan) {
-            case KEY_UP:
-                if (s->selected_channel > 0)
-                    s->selected_channel--;
-                break;
-            case KEY_DOWN:
-                if (s->selected_channel < s->channel_count - 1)
-                    s->selected_channel++;
-                break;
-            }
+            s->dirty = 1;
         }
         break;
 
-    case DC_FOCUS_MESSAGES:
-        if (ch == 0x09) {  /* Tab */
-            s->focus = DC_FOCUS_COMPOSE;
-            return;
-        }
-        if (ch == 0) {
-            switch (scan) {
-            case KEY_PGUP:
-                s->msg_scroll += DC_CONTENT_ROWS;
-                /* Upper bound clamped by dc_render_messages() */
-                break;
-            case KEY_PGDN:
-                s->msg_scroll -= DC_CONTENT_ROWS;
-                if (s->msg_scroll < 0) s->msg_scroll = 0;
-                break;
-            case KEY_UP:
-                s->msg_scroll++;
-                break;
-            case KEY_DOWN:
-                if (s->msg_scroll > 0) s->msg_scroll--;
-                break;
-            }
-        }
-        break;
+    /* --------------------------------------------------------
+     * Message view scrolling
+     * -------------------------------------------------------- */
+    case DC_FOCUS_MESSAGES: {
+        int max = msg_scroll_max(s);
 
-    case DC_FOCUS_COMPOSE:
-        compose_key(s, key);
+        if (key == KEY_UP) {
+            s->msg_scroll++;
+            if (s->msg_scroll > max)
+                s->msg_scroll = max;
+            s->dirty = 1;
+        } else if (key == KEY_DOWN) {
+            s->msg_scroll--;
+            if (s->msg_scroll < 0)
+                s->msg_scroll = 0;
+            s->dirty = 1;
+        } else if (key == KEY_PGUP) {
+            s->msg_scroll += 20;
+            if (s->msg_scroll > max)
+                s->msg_scroll = max;
+            s->dirty = 1;
+        } else if (key == KEY_PGDN) {
+            s->msg_scroll -= 20;
+            if (s->msg_scroll < 0)
+                s->msg_scroll = 0;
+            s->dirty = 1;
+        } else if (key == KEY_HOME) {
+            s->msg_scroll = max;
+            s->dirty = 1;
+        } else if (key == KEY_END) {
+            s->msg_scroll = 0;
+            s->dirty = 1;
+        }
+#if FEAT_SEARCH
+        else if (key == 'n') {
+            dc_search_next(s);
+            s->dirty = 1;
+        } else if (key == 'N') {
+            dc_search_prev(s);
+            s->dirty = 1;
+        }
+#endif
         break;
     }
+
+    /* --------------------------------------------------------
+     * Compose buffer editing
+     * -------------------------------------------------------- */
+    case DC_FOCUS_COMPOSE: {
+        dc_compose_t *c = &s->compose;
+
+        if (key == KEY_ENTER) {
+            /* Send message if buffer is non-empty */
+            if (c->len > 0) {
+                dc_send_message(s, c->buf);
+                c->len = 0;
+                c->cursor = 0;
+                c->buf[0] = '\0';
+                c->scroll_line = 0;
+                s->dirty = 1;
+            }
+        }
+#if FEAT_MULTILINE
+        else if (key == KEY_SHIFT_ENTER) {
+            /* Insert newline if under line limit and buffer limit */
+            int lines = compose_lines(c->buf, c->len);
+            if (lines < DC_COMPOSE_MAX_LINES && c->len < DC_MAX_COMPOSE) {
+                memmove(&c->buf[c->cursor + 1], &c->buf[c->cursor],
+                        c->len - c->cursor + 1);
+                c->buf[c->cursor] = '\n';
+                c->len++;
+                c->cursor++;
+                s->dirty = 1;
+            }
+        }
+#endif
+        else if (key == KEY_BACKSPACE) {
+            if (c->cursor > 0) {
+                c->cursor--;
+                memmove(&c->buf[c->cursor], &c->buf[c->cursor + 1],
+                        c->len - c->cursor);
+                c->len--;
+                s->dirty = 1;
+            }
+        } else if (key == KEY_DEL) {
+            if (c->cursor < c->len) {
+                memmove(&c->buf[c->cursor], &c->buf[c->cursor + 1],
+                        c->len - c->cursor);
+                c->len--;
+                s->dirty = 1;
+            }
+        } else if (key == KEY_LEFT) {
+            if (c->cursor > 0) {
+                c->cursor--;
+                s->dirty = 1;
+            }
+        } else if (key == KEY_RIGHT) {
+            if (c->cursor < c->len) {
+                c->cursor++;
+                s->dirty = 1;
+            }
+        } else if (key == KEY_HOME) {
+            c->cursor = 0;
+            s->dirty = 1;
+        } else if (key == KEY_END) {
+            c->cursor = c->len;
+            s->dirty = 1;
+        } else if (key == KEY_ESC) {
+            c->len = 0;
+            c->cursor = 0;
+            c->buf[0] = '\0';
+            c->scroll_line = 0;
+            s->dirty = 1;
+        } else if (key >= 0x20 && key <= 0x7E) {
+            /* Printable ASCII: insert at cursor */
+            if (c->len < DC_MAX_COMPOSE) {
+                memmove(&c->buf[c->cursor + 1], &c->buf[c->cursor],
+                        c->len - c->cursor + 1);
+                c->buf[c->cursor] = (char)key;
+                c->len++;
+                c->cursor++;
+                s->dirty = 1;
+            }
+        }
+        break;
+    }
+
+    } /* switch(focus) */
 }

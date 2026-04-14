@@ -41,7 +41,8 @@ CATHODE_OBJS = cathode\main.obj cathode\browser.obj cathode\render.obj &
 CATHODE_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=cathode
 
 DISCORD_OBJS = discord\main.obj discord\discord.obj discord\render_dc.obj &
-	discord\input_dc.obj discord\stub_discord.obj
+	discord\input_dc.obj discord\stub_discord.obj discord\audio_dc.obj &
+	discord\config_dc.obj discord\search_dc.obj
 
 DISCORD_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=discord
 
@@ -187,6 +188,9 @@ discord.exe: $(DISCORD_OBJS) $(LIB_SCREEN)
 		file discord\render_dc.obj &
 		file discord\input_dc.obj &
 		file discord\stub_discord.obj &
+		file discord\audio_dc.obj &
+		file discord\config_dc.obj &
+		file discord\search_dc.obj &
 		file lib\screen.obj &
 		option quiet
 
@@ -204,6 +208,15 @@ discord\input_dc.obj: discord\input_dc.c discord\discord.h lib\screen.h
 
 discord\stub_discord.obj: discord\stub_discord.c discord\discord.h lib\screen.h
 	$(CC) $(DISCORD_CFLAGS) -fo=discord\stub_discord.obj discord\stub_discord.c
+
+discord\audio_dc.obj: discord\audio_dc.c discord\discord.h
+	$(CC) $(DISCORD_CFLAGS) -fo=discord\audio_dc.obj discord\audio_dc.c
+
+discord\config_dc.obj: discord\config_dc.c discord\discord.h
+	$(CC) $(DISCORD_CFLAGS) -fo=discord\config_dc.obj discord\config_dc.c
+
+discord\search_dc.obj: discord\search_dc.c discord\discord.h
+	$(CC) $(DISCORD_CFLAGS) -fo=discord\search_dc.obj discord\search_dc.c
 
 # Claude client
 claude.exe: $(CLAUDE_OBJS) $(LIB_SCREEN)
