@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/mandoc.css" type="text/css" media="all">
+  <title>ls(1) - OpenBSD manual pages</title>
+</head>
+<body>
+<header>
+<section>
+<h1><a href="https://www.openbsd.org/">OpenBSD</a> manual page server</h1>
+</section>
+<form role="search" action="/" method="get" autocomplete="off" autocapitalize="none">
+  <fieldset>
+    <legend>Manual Page Search Parameters</legend>
+    <label>Search query:
+      <input type="search" name="query" value="ls" size="40">
+    </label>
+    <button type="submit" name="apropos" value="0">man</button>
+    <button type="submit" name="apropos" value="1">apropos</button>
+    <br/>
+    <select name="sec" aria-label="Manual section">
+      <option value="0">All Sections</option>
+      <option value="1">1 - General Commands</option>
+      <option value="2">2 - System Calls</option>
+      <option value="3">3 - Library Functions</option>
+      <option value="3p">3p - Perl Library</option>
+      <option value="4">4 - Device Drivers</option>
+      <option value="5">5 - File Formats</option>
+      <option value="6">6 - Games</option>
+      <option value="7">7 - Miscellaneous Information</option>
+      <option value="8">8 - System Manager's Manual</option>
+      <option value="9">9 - Kernel Developer's Manual</option>
+    </select>
+    <select name="arch" aria-label="CPU architecture">
+      <option value="default" selected="selected">All Architectures</option>
+      <option>amd64</option>
+      <option>alpha</option>
+      <option>armv7</option>
+      <option>arm64</option>
+      <option>hppa</option>
+      <option>i386</option>
+      <option>landisk</option>
+      <option>loongson</option>
+      <option>luna88k</option>
+      <option>macppc</option>
+      <option>mips64</option>
+      <option>octeon</option>
+      <option>powerpc64</option>
+      <option>riscv64</option>
+      <option>sparc64</option>
+      <option>amiga</option>
+      <option>arc</option>
+      <option>armish</option>
+      <option>arm32</option>
+      <option>atari</option>
+      <option>aviion</option>
+      <option>beagle</option>
+      <option>cats</option>
+      <option>hppa64</option>
+      <option>hp300</option>
+      <option>ia64</option>
+      <option>mac68k</option>
+      <option>mvme68k</option>
+      <option>mvme88k</option>
+      <option>mvmeppc</option>
+      <option>palm</option>
+      <option>pc532</option>
+      <option>pegasos</option>
+      <option>pmax</option>
+      <option>powerpc</option>
+      <option>sgi</option>
+      <option>socppc</option>
+      <option>solbourne</option>
+      <option>sparc</option>
+      <option>sun3</option>
+      <option>vax</option>
+      <option>wgrisc</option>
+      <option>x68k</option>
+      <option>zaurus</option>
+    </select>
+    <select name="manpath" aria-label="Manual path">
+      <option selected="selected">OpenBSD-current</option>
+      <option>OpenBSD-7.8</option>
+      <option>OpenBSD-7.7</option>
+      <option>OpenBSD-7.6</option>
+      <option>OpenBSD-7.5</option>
+      <option>OpenBSD-7.4</option>
+      <option>OpenBSD-7.3</option>
+      <option>OpenBSD-7.2</option>
+      <option>OpenBSD-7.1</option>
+      <option>OpenBSD-7.0</option>
+      <option>OpenBSD-6.9</option>
+      <option>OpenBSD-6.8</option>
+      <option>OpenBSD-6.7</option>
+      <option>OpenBSD-6.6</option>
+      <option>OpenBSD-6.5</option>
+      <option>OpenBSD-6.4</option>
+      <option>OpenBSD-6.3</option>
+      <option>OpenBSD-6.2</option>
+      <option>OpenBSD-6.1</option>
+      <option>OpenBSD-6.0</option>
+      <option>OpenBSD-5.9</option>
+      <option>OpenBSD-5.8</option>
+      <option>OpenBSD-5.7</option>
+      <option>OpenBSD-5.6</option>
+      <option>OpenBSD-5.5</option>
+      <option>OpenBSD-5.4</option>
+      <option>OpenBSD-5.3</option>
+      <option>OpenBSD-5.2</option>
+      <option>OpenBSD-5.1</option>
+      <option>OpenBSD-5.0</option>
+      <option>OpenBSD-4.9</option>
+      <option>OpenBSD-4.8</option>
+      <option>OpenBSD-4.7</option>
+      <option>OpenBSD-4.6</option>
+      <option>OpenBSD-4.5</option>
+      <option>OpenBSD-4.4</option>
+      <option>OpenBSD-4.3</option>
+      <option>OpenBSD-4.2</option>
+      <option>OpenBSD-4.1</option>
+      <option>OpenBSD-4.0</option>
+      <option>OpenBSD-3.9</option>
+      <option>OpenBSD-3.8</option>
+      <option>OpenBSD-3.7</option>
+      <option>OpenBSD-3.6</option>
+      <option>OpenBSD-3.5</option>
+      <option>OpenBSD-3.4</option>
+      <option>OpenBSD-3.3</option>
+      <option>OpenBSD-3.2</option>
+      <option>OpenBSD-3.1</option>
+      <option>OpenBSD-3.0</option>
+      <option>OpenBSD-2.9</option>
+      <option>OpenBSD-2.8</option>
+      <option>OpenBSD-2.7</option>
+      <option>OpenBSD-2.6</option>
+      <option>OpenBSD-2.5</option>
+      <option>OpenBSD-2.4</option>
+      <option>OpenBSD-2.3</option>
+      <option>OpenBSD-2.2</option>
+    </select>
+  </fieldset>
+</form>
+</header>
+<hr>
+<div class="head" role="doc-pageheader" aria-label="Manual header
+  line"><span class="head-ltitle">LS(1)</span> <span class="head-vol">General
+  Commands Manual</span> <span class="head-rtitle">LS(1)</span></div>
+<main class="manual-text">
+<section class="Sh">
+<h2 class="Sh" id="NAME"><a class="permalink" href="#NAME">NAME</a></h2>
+<p class="Pp"><code class="Nm">ls</code> &#x2014;
+    <span class="Nd" role="doc-subtitle">list directory contents</span></p>
+</section>
+<section class="Sh">
+<h2 class="Sh" id="SYNOPSIS"><a class="permalink" href="#SYNOPSIS">SYNOPSIS</a></h2>
+<table class="Nm">
+  <tr>
+    <td><code class="Nm">ls</code></td>
+    <td>[<code class="Fl">-1AaCcdFfgHhikLlmnopqRrSsTtux</code>]
+      [<var class="Ar">file ...</var>]</td>
+  </tr>
+</table>
+</section>
+<section class="Sh">
+<h2 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h2>
+<p class="Pp">For each operand that names a <var class="Ar">file</var> of a type
+    other than directory, <code class="Nm">ls</code> displays its name as well
+    as any requested, associated information. For each named directory,
+    <code class="Nm">ls</code> displays the names of files contained within that
+    directory, as well as any requested, associated information.</p>
+<p class="Pp">If no operands are given, the contents of the current directory
+    are displayed. If more than one operand is given, non-directory operands are
+    displayed first; directory and non-directory operands are sorted separately
+    and in lexicographical order. By default, <code class="Nm">ls</code> lists
+    one entry per line to standard output; the exceptions are to terminals or
+    when the <code class="Fl">-C</code>, <code class="Fl">-m</code>, or
+    <code class="Fl">-x</code> options are specified.</p>
+<p class="Pp">The options are as follows:</p>
+<dl class="Bl-tag">
+  <dt id="1"><a class="permalink" href="#1"><code class="Fl">-1</code></a></dt>
+  <dd>(The numeric digit &#x201C;one&#x201D;.) Force output to be one entry per
+      line. This is the default when output is not to a terminal.</dd>
+  <dt id="A"><a class="permalink" href="#A"><code class="Fl">-A</code></a></dt>
+  <dd>List all entries except for &#x2018;.&#x2019; and &#x2018;..&#x2019;.
+      Always set for the superuser.</dd>
+  <dt id="a"><a class="permalink" href="#a"><code class="Fl">-a</code></a></dt>
+  <dd>Include directory entries whose names begin with a dot
+      (&#x2018;.&#x2019;).</dd>
+  <dt id="C"><a class="permalink" href="#C"><code class="Fl">-C</code></a></dt>
+  <dd>Force multi-column output; this is the default when output is to a
+      terminal.</dd>
+  <dt id="c"><a class="permalink" href="#c"><code class="Fl">-c</code></a></dt>
+  <dd>Use time file's status was last changed instead of last modification time
+      for sorting (<code class="Fl">-t</code>) or printing
+      (<code class="Fl">-g</code>, <code class="Fl">-l</code>, or
+      <code class="Fl">-n</code>).</dd>
+  <dt id="d"><a class="permalink" href="#d"><code class="Fl">-d</code></a></dt>
+  <dd>Directories are listed as plain files (not searched recursively) and
+      symbolic links in the argument list are not indirected through.</dd>
+  <dt id="F"><a class="permalink" href="#F"><code class="Fl">-F</code></a></dt>
+  <dd>Display a slash (&#x2018;/&#x2019;) immediately after each pathname that
+      is a directory, an asterisk (&#x2018;*&#x2019;) after each that is
+      executable, an at sign (&#x2018;@&#x2019;) after each symbolic link, an
+      equal sign (&#x2018;=&#x2019;) after each socket, and a vertical bar
+      (&#x2018;|&#x2019;) after each that is a FIFO.</dd>
+  <dt id="f"><a class="permalink" href="#f"><code class="Fl">-f</code></a></dt>
+  <dd>Output is not sorted. This option implies <code class="Fl">-a</code>.</dd>
+  <dt id="g"><a class="permalink" href="#g"><code class="Fl">-g</code></a></dt>
+  <dd>List in long format as in <code class="Fl">-l</code>, except that the
+      owner is not printed.</dd>
+  <dt id="H"><a class="permalink" href="#H"><code class="Fl">-H</code></a></dt>
+  <dd>Follow symbolic links specified on the command line. This is the default
+      behaviour when none of the <code class="Fl">-d</code>,
+      <code class="Fl">-F</code>, or <code class="Fl">-l</code> options are
+      specified.</dd>
+  <dt id="h"><a class="permalink" href="#h"><code class="Fl">-h</code></a></dt>
+  <dd>When used with a long format option, use unit suffixes: Byte, Kilobyte,
+      Megabyte, Gigabyte, Terabyte, Petabyte, and Exabyte in order to reduce the
+      number of digits to four or fewer using powers of 2 for sizes (K=1024,
+      M=1048576, etc.).</dd>
+  <dt id="i"><a class="permalink" href="#i"><code class="Fl">-i</code></a></dt>
+  <dd>For each file, print its inode number.</dd>
+  <dt id="k"><a class="permalink" href="#k"><code class="Fl">-k</code></a></dt>
+  <dd>Modifies the <code class="Fl">-s</code> option, causing the sizes to be
+      reported in kilobytes. Overrides any value specified by the
+      <code class="Ev">BLOCKSIZE</code> environment variable.</dd>
+  <dt id="L"><a class="permalink" href="#L"><code class="Fl">-L</code></a></dt>
+  <dd>If argument is a symbolic link, evaluate the file information and file
+      type to be those of the file referenced by the link, and not the link
+      itself; however, <code class="Nm">ls</code> writes the name of the link
+      itself and not the file referenced by the link.</dd>
+  <dt id="l"><a class="permalink" href="#l"><code class="Fl">-l</code></a></dt>
+  <dd>(The lowercase letter &#x201C;ell&#x201D;.) List in long format (see
+      below). A total sum of all file sizes is output on a line before the long
+      listing. Output is one entry per line.</dd>
+  <dt id="m"><a class="permalink" href="#m"><code class="Fl">-m</code></a></dt>
+  <dd>Stream output format; list files across the page, separated by
+    commas.</dd>
+  <dt id="n"><a class="permalink" href="#n"><code class="Fl">-n</code></a></dt>
+  <dd>List in long format as in <code class="Fl">-l</code>, but retain user and
+      group IDs in a numeric format. The output of <code class="Fl">-gn</code>
+      and <code class="Fl">-ng</code> is identical: a long listing with
+      numerical group ID, and no numerical user ID. The output of
+      <code class="Fl">-ln</code> and <code class="Fl">-nl</code> is identical:
+      a long listing with numerical group and user ID.</dd>
+  <dt id="o"><a class="permalink" href="#o"><code class="Fl">-o</code></a></dt>
+  <dd>Include the file flags in a long format (<code class="Fl">-g</code>,
+      <code class="Fl">-l</code>, or <code class="Fl">-n</code>) output.</dd>
+  <dt id="p"><a class="permalink" href="#p"><code class="Fl">-p</code></a></dt>
+  <dd>Display a slash (&#x2018;/&#x2019;) immediately after each pathname that
+      is a directory.</dd>
+  <dt id="q"><a class="permalink" href="#q"><code class="Fl">-q</code></a></dt>
+  <dd>Force printing of non-graphic characters in file names as the character
+      &#x2018;?&#x2019;; this is the default when output is to a terminal.</dd>
+  <dt id="R"><a class="permalink" href="#R"><code class="Fl">-R</code></a></dt>
+  <dd>Recursively list subdirectories encountered.</dd>
+  <dt id="r"><a class="permalink" href="#r"><code class="Fl">-r</code></a></dt>
+  <dd>Reverse the order of the sort to get reverse lexicographical order or the
+      smallest or oldest entries first.</dd>
+  <dt id="S"><a class="permalink" href="#S"><code class="Fl">-S</code></a></dt>
+  <dd>Sort by size, largest file first.</dd>
+  <dt id="s"><a class="permalink" href="#s"><code class="Fl">-s</code></a></dt>
+  <dd>Display the number of file system blocks actually used by each file, where
+      partial units are rounded up to the next integer value. Blocks are 512
+      bytes unless overridden by the <code class="Fl">-k</code> flag or
+      <code class="Ev">BLOCKSIZE</code> environment variable.</dd>
+  <dt id="T"><a class="permalink" href="#T"><code class="Fl">-T</code></a></dt>
+  <dd>Display complete time information for the file, including month, day,
+      hour, minute, second, and year. This option has no effect unless one of
+      the long format (<code class="Fl">-g</code>, <code class="Fl">-l</code>,
+      or <code class="Fl">-n</code>) options is also specified.</dd>
+  <dt id="t"><a class="permalink" href="#t"><code class="Fl">-t</code></a></dt>
+  <dd>Sort by time modified (most recently modified first) before sorting the
+      operands in lexicographical order.</dd>
+  <dt id="u"><a class="permalink" href="#u"><code class="Fl">-u</code></a></dt>
+  <dd>Use file's last access time instead of last modification time for sorting
+      (<code class="Fl">-t</code>) or printing (<code class="Fl">-g</code>,
+      <code class="Fl">-l</code>, or <code class="Fl">-n</code>).</dd>
+  <dt id="x"><a class="permalink" href="#x"><code class="Fl">-x</code></a></dt>
+  <dd>Multi-column output sorted across the page rather than down the page.</dd>
+</dl>
+<p class="Pp">It is not an error to specify more than one of the following
+    mutually exclusive options: <code class="Fl">-1</code>,
+    <code class="Fl">-C</code>, <code class="Fl">-g</code>,
+    <code class="Fl">-l</code>, <code class="Fl">-m</code>,
+    <code class="Fl">-n</code>, and <code class="Fl">-x</code>; and
+    <code class="Fl">-c</code>, <code class="Fl">-f</code>,
+    <code class="Fl">-S</code>, <code class="Fl">-t</code>, and
+    <code class="Fl">-u</code>. Where more than one option is specified from the
+    same mutually exclusive group, the last option given overrides the others,
+    except that <code class="Fl">-l</code> always overrides
+    <code class="Fl">-g</code>; and <code class="Fl">-f</code> always overrides
+    <code class="Fl">-c</code>, <code class="Fl">-S</code>,
+    <code class="Fl">-t</code>, and <code class="Fl">-u</code>.</p>
+<section class="Ss">
+<h3 class="Ss" id="The_Long_Format"><a class="permalink" href="#The_Long_Format">The
+  Long Format</a></h3>
+<p class="Pp">If the <code class="Fl">-g</code>, <code class="Fl">-l</code>, or
+    <code class="Fl">-n</code> options are given, the following information is
+    displayed for each file: mode, number of links, owner (though not for
+    <code class="Fl">-g</code>), group, size in bytes, date and time or date and
+    year of last modification, and the pathname. In addition, for each directory
+    whose contents are displayed, the first line displayed is the total number
+    of blocks used by the files in the directory. Blocks are 512 bytes unless
+    overridden by the <code class="Fl">-k</code> option or
+    <code class="Ev">BLOCKSIZE</code> environment variable.</p>
+<p class="Pp">If the owner or group name is not a known user or group name,
+    respectively, or the <code class="Fl">-n</code> option is given, the numeric
+    ID is displayed.</p>
+<p class="Pp">If the file is a character special or block special file, the
+    major and minor device numbers for the file are displayed in the size
+  field.</p>
+<p class="Pp">If the <code class="Fl">-T</code> option is given, the time of
+    last modification is displayed using the format &#x201C;mmm dd HH:MM:SS
+    ccyy&#x201D;.</p>
+<p class="Pp">If the file is a symbolic link, the pathname of the linked-to file
+    is preceded by &#x201C;-&gt;&#x201D;.</p>
+<p class="Pp">The file mode printed under the <code class="Fl">-g</code>,
+    <code class="Fl">-l</code>, or <code class="Fl">-n</code> options consists
+    of the entry type, owner permissions, group permissions, and other
+    permissions. The entry type character describes the type of file, as
+    follows:</p>
+<p class="Pp"></p>
+<div class="Bd-indent">
+<dl class="Bl-tag Bl-compact">
+  <dt><b class="Sy">-</b></dt>
+  <dd>regular file</dd>
+  <dt id="b"><a class="permalink" href="#b"><b class="Sy">b</b></a></dt>
+  <dd>block special file</dd>
+  <dt id="c~2"><a class="permalink" href="#c~2"><b class="Sy">c</b></a></dt>
+  <dd>character special file</dd>
+  <dt id="d~2"><a class="permalink" href="#d~2"><b class="Sy">d</b></a></dt>
+  <dd>directory</dd>
+  <dt id="l~2"><a class="permalink" href="#l~2"><b class="Sy">l</b></a></dt>
+  <dd>symbolic link</dd>
+  <dt id="p~2"><a class="permalink" href="#p~2"><b class="Sy">p</b></a></dt>
+  <dd>FIFO</dd>
+  <dt id="s~2"><a class="permalink" href="#s~2"><b class="Sy">s</b></a></dt>
+  <dd>socket link</dd>
+</dl>
+</div>
+<p class="Pp">The next three fields are three characters each: owner
+    permissions, group permissions, and other permissions. Each field has three
+    character positions:</p>
+<p class="Pp"></p>
+<ol class="Bl-enum Bd-indent Bl-compact">
+  <li>If <b class="Sy">r</b>, the file is readable; if <b class="Sy">-</b>, it
+      is not readable.</li>
+  <li id="w">If <a class="permalink" href="#w"><b class="Sy">w</b></a>, the file
+      is writable; if <b class="Sy">-</b>, it is not writable.</li>
+  <li>The first of the following that applies:
+    <div class="Bd-indent">
+    <dl class="Bl-tag">
+      <dt id="S~2"><a class="permalink" href="#S~2"><b class="Sy">S</b></a></dt>
+      <dd>If in the owner permissions, the file is not executable and
+          set-user-ID mode is set. If in the group permissions, the file is not
+          executable and set-group-ID mode is set.</dd>
+      <dt id="s~3"><a class="permalink" href="#s~3"><b class="Sy">s</b></a></dt>
+      <dd>If in the owner permissions, the file is executable and set-user-ID
+          mode is set. If in the group permissions, the file is executable and
+          set-group-ID mode is set.</dd>
+      <dt id="x~2"><a class="permalink" href="#x~2"><b class="Sy">x</b></a></dt>
+      <dd>The file is executable or the directory is searchable.</dd>
+      <dt><b class="Sy">-</b></dt>
+      <dd>The file is neither readable, writable, executable, nor set-user-ID,
+          nor set-group-ID, nor sticky (see below).</dd>
+    </dl>
+    </div>
+    <p class="Pp">These next two apply only to the third character in the last
+        group (other permissions):</p>
+    <div class="Bd-indent">
+    <dl class="Bl-tag">
+      <dt id="T~2"><a class="permalink" href="#T~2"><b class="Sy">T</b></a></dt>
+      <dd>The sticky bit is set (mode <code class="Li">1000</code>), but neither
+          executable nor searchable (see
+          <a class="Xr" href="/chmod.1" aria-label="chmod, section
+          1">chmod(1)</a> or <a class="Xr" href="/sticky.8" aria-label="sticky,
+          section 8">sticky(8)</a>).</dd>
+      <dt id="t~2"><a class="permalink" href="#t~2"><b class="Sy">t</b></a></dt>
+      <dd>The sticky bit is set (mode <code class="Li">1000</code>), and is
+          searchable or executable (see
+          <a class="Xr" href="/chmod.1" aria-label="chmod, section
+          1">chmod(1)</a> or <a class="Xr" href="/sticky.8" aria-label="sticky,
+          section 8">sticky(8)</a>).</dd>
+    </dl>
+    </div>
+  </li>
+</ol>
+<p class="Pp">In addition, if the <code class="Fl">-o</code> option is
+    specified, the file flags (see
+    <a class="Xr" href="/chflags.1" aria-label="chflags, section
+    1">chflags(1)</a>) are displayed as comma-separated strings in front of the
+    file size, abbreviated as follows:</p>
+<p class="Pp"></p>
+<div class="Bd-indent">
+<dl class="Bl-tag Bl-compact">
+  <dt>-</dt>
+  <dd>no flags</dd>
+  <dt>arch</dt>
+  <dd>archived</dd>
+  <dt>nodump</dt>
+  <dd>do not dump</dd>
+  <dt>sappnd</dt>
+  <dd>system append-only</dd>
+  <dt>schg</dt>
+  <dd>system immutable</dd>
+  <dt>uappnd</dt>
+  <dd>user append-only</dd>
+  <dt>uchg</dt>
+  <dd>user immutable</dd>
+</dl>
+</div>
+</section>
+</section>
+<section class="Sh">
+<h2 class="Sh" id="ENVIRONMENT"><a class="permalink" href="#ENVIRONMENT">ENVIRONMENT</a></h2>
+<dl class="Bl-tag">
+  <dt id="BLOCKSIZE"><a class="permalink" href="#BLOCKSIZE"><code class="Ev">BLOCKSIZE</code></a></dt>
+  <dd>If the environment variable <code class="Ev">BLOCKSIZE</code> is set, and
+      the <code class="Fl">-k</code> option is not specified, the block counts
+      (see <code class="Fl">-s</code>) will be displayed in units of that size
+      block.</dd>
+  <dt id="COLUMNS"><a class="permalink" href="#COLUMNS"><code class="Ev">COLUMNS</code></a></dt>
+  <dd>If set to a positive integer, output is formatted to the given width in
+      columns. Otherwise, <code class="Nm">ls</code> defaults to the terminal
+      width, or 80 columns if the output is not a terminal.</dd>
+  <dt id="LC_CTYPE"><a class="permalink" href="#LC_CTYPE"><code class="Ev">LC_CTYPE</code></a></dt>
+  <dd>The character encoding <a class="Xr" href="/locale.1" aria-label="locale,
+      section 1">locale(1)</a>. It decides which byte sequences form characters
+      and what their display width is. If unset or set to &quot;C&quot;,
+      &quot;POSIX&quot;, or an unsupported value, non-ASCII bytes are replaced
+      by question marks.</dd>
+  <dt id="TZ"><a class="permalink" href="#TZ"><code class="Ev">TZ</code></a></dt>
+  <dd>The time zone to use when displaying dates. See
+      <a class="Xr" href="/environ.7" aria-label="environ, section
+      7">environ(7)</a> for more information.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h2 class="Sh" id="EXIT_STATUS"><a class="permalink" href="#EXIT_STATUS">EXIT
+  STATUS</a></h2>
+<p class="Pp">The <code class="Nm">ls</code> utility exits&#x00A0;0 on success,
+    and&#x00A0;&gt;0 if an error occurs.</p>
+</section>
+<section class="Sh">
+<h2 class="Sh" id="EXAMPLES"><a class="permalink" href="#EXAMPLES">EXAMPLES</a></h2>
+<p class="Pp">List the contents of the current working directory in long
+  format:</p>
+<p class="Pp"></p>
+<div class="Bd Bd-indent"><code class="Li">$ ls -l</code></div>
+<p class="Pp">In addition to listing the contents of the current working
+    directory in long format, show inode numbers, file flags (see
+    <a class="Xr" href="/chflags.1" aria-label="chflags, section
+    1">chflags(1)</a>), and suffix each filename with a symbol representing its
+    file type:</p>
+<p class="Pp"></p>
+<div class="Bd Bd-indent"><code class="Li">$ ls -lioF</code></div>
+<p class="Pp">List the files in <span class="Pa">/var/log</span>, sorting the
+    output such that the most recently modified entries are printed first:</p>
+<p class="Pp"></p>
+<div class="Bd Bd-indent"><code class="Li">$ ls -lt /var/log</code></div>
+</section>
+<section class="Sh">
+<h2 class="Sh" id="SEE_ALSO"><a class="permalink" href="#SEE_ALSO">SEE
+  ALSO</a></h2>
+<p class="Pp"><a class="Xr" href="/chflags.1" aria-label="chflags, section
+    1">chflags(1)</a>, <a class="Xr" href="/chmod.1" aria-label="chmod, section
+    1">chmod(1)</a>, <a class="Xr" href="/symlink.7" aria-label="symlink,
+    section 7">symlink(7)</a>,
+    <a class="Xr" href="/sticky.8" aria-label="sticky, section
+  8">sticky(8)</a></p>
+</section>
+<section class="Sh">
+<h2 class="Sh" id="STANDARDS"><a class="permalink" href="#STANDARDS">STANDARDS</a></h2>
+<p class="Pp">The <code class="Nm">ls</code> utility is compliant with the
+    <span class="St">IEEE Std 1003.1-2008 (&#x201C;POSIX.1&#x201D;)</span>
+    specification, except behaviour for the <code class="Fl">-o</code> flag
+    differs.</p>
+<p class="Pp">The flags [<code class="Fl">-hT</code>], as well as the
+    <code class="Ev">BLOCKSIZE</code> environment variable, are extensions to
+    that specification.</p>
+<p class="Pp">The flags [<code class="Fl">-go</code>] are marked by
+    <span class="St">IEEE Std 1003.1-2008 (&#x201C;POSIX.1&#x201D;)</span> as
+    being an X/Open System Interfaces option.</p>
+<p class="Pp">Historically, the <code class="Fl">-g</code> flag was used to
+    specify that the group field be included in long listings. The group field
+    is now automatically included in the long listing for files and the meaning
+    of the <code class="Fl">-g</code> flag has been changed in order to be
+    compatible with the <span class="St">IEEE Std 1003.1-2008
+    (&#x201C;POSIX.1&#x201D;)</span> specification.</p>
+</section>
+<section class="Sh">
+<h2 class="Sh" id="HISTORY"><a class="permalink" href="#HISTORY">HISTORY</a></h2>
+<p class="Pp">An <code class="Nm">ls</code> utility appeared in
+    <span class="Ux">Version&#x00A0;1 AT&amp;T UNIX</span>.</p>
+</section>
+</main>
+<div class="foot" role="doc-pagefooter" aria-label="Manual footer
+  line"><span class="foot-left">OpenBSD-current</span>
+  <span class="foot-date">January 18, 2026</span>
+  <span class="foot-right">LS(1)</span></div>
+</body>
+</html>

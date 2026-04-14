@@ -19,28 +19,62 @@ void html_init(html_parser_t *p, page_buffer_t *page)
     utf8_init(&p->utf8);
 }
 
+/* Named entity → Unicode codepoint table.
+ * Sorted by first character for fast rejection. */
+typedef struct { const char *name; unsigned long cp; } entity_map_t;
+static const entity_map_t named_entities[] = {
+    /* Basic */
+    {"amp",     '&'},     {"apos",    '\''},    {"gt",      '>'},
+    {"lt",      '<'},     {"nbsp",    ' '},     {"quot",    '"'},
+    /* Accented lowercase */
+    {"aacute",  0xE1},    {"acirc",   0xE2},    {"agrave",  0xE0},
+    {"aring",   0xE5},    {"atilde",  0xE3},    {"auml",    0xE4},
+    {"ccedil",  0xE7},    {"eacute",  0xE9},    {"ecirc",   0xEA},
+    {"egrave",  0xE8},    {"euml",    0xEB},    {"iacute",  0xED},
+    {"icirc",   0xEE},    {"igrave",  0xEC},    {"iuml",    0xEF},
+    {"ntilde",  0xF1},    {"oacute",  0xF3},    {"ocirc",   0xF4},
+    {"ograve",  0xF2},    {"oslash",  0xF8},    {"otilde",  0xF5},
+    {"ouml",    0xF6},    {"szlig",   0xDF},    {"uacute",  0xFA},
+    {"ucirc",   0xFB},    {"ugrave",  0xF9},    {"uuml",    0xFC},
+    {"yacute",  0xFD},    {"yuml",    0xFF},
+    /* Accented uppercase */
+    {"Aacute",  0xC1},    {"Acirc",   0xC2},    {"Agrave",  0xC0},
+    {"Aring",   0xC5},    {"Atilde",  0xC3},    {"Auml",    0xC4},
+    {"Ccedil",  0xC7},    {"Eacute",  0xC9},    {"Ecirc",   0xCA},
+    {"Egrave",  0xC8},    {"Euml",    0xCB},    {"Iacute",  0xCD},
+    {"Icirc",   0xCE},    {"Igrave",  0xCC},    {"Iuml",    0xCF},
+    {"Ntilde",  0xD1},    {"Oacute",  0xD3},    {"Ocirc",   0xD4},
+    {"Ograve",  0xD2},    {"Oslash",  0xD8},    {"Otilde",  0xD5},
+    {"Ouml",    0xD6},    {"Uacute",  0xDA},    {"Ucirc",   0xDB},
+    {"Ugrave",  0xD9},    {"Uuml",    0xDC},    {"Yacute",  0xDD},
+    /* Punctuation */
+    {"bull",    0x2022},  {"hellip",  0x2026},
+    {"ldquo",   0x201C},  {"rdquo",   0x201D},
+    {"lsquo",   0x2018},  {"rsquo",   0x2019},
+    {"mdash",   0x2014},  {"ndash",   0x2013},
+    {"laquo",   0xAB},    {"raquo",   0xBB},
+    /* Currency & symbols */
+    {"cent",    0xA2},    {"copy",    0xA9},    {"deg",     0xB0},
+    {"euro",    0x20AC},  {"pound",   0xA3},    {"reg",     0xAE},
+    {"sect",    0xA7},    {"trade",   0x2122},  {"yen",     0xA5},
+    /* Math */
+    {"divide",  0xF7},    {"frac12",  0xBD},    {"frac14",  0xBC},
+    {"frac34",  0xBE},    {"minus",   0x2212},  {"plusmn",  0xB1},
+    {"times",   0xD7},
+    /* Arrows */
+    {"darr",    0x2193},  {"larr",    0x2190},  {"rarr",    0x2192},
+    {"uarr",    0x2191},
+    /* Misc */
+    {"iexcl",   0xA1},    {"iquest",  0xBF},    {"middot",  0xB7},
+    {"micro",   0xB5},    {"para",    0xB6},    {"shy",     0xAD},
+    {"sup1",    0xB9},    {"sup2",    0xB2},    {"sup3",    0xB3},
+    {"ordf",    0xAA},    {"ordm",    0xBA},
+    {NULL, 0}
+};
+
 /* Entity resolution: returns CP437 char, or 0 if unknown */
 static unsigned char resolve_entity(const char *name, int len)
 {
-    if (len == 3 && name[0] == 'a' && name[1] == 'm' && name[2] == 'p')
-        return '&';
-    if (len == 2 && name[0] == 'l' && name[1] == 't')
-        return '<';
-    if (len == 2 && name[0] == 'g' && name[1] == 't')
-        return '>';
-    if (len == 4 && name[0] == 'q' && name[1] == 'u' &&
-        name[2] == 'o' && name[3] == 't')
-        return '"';
-    if (len == 4 && name[0] == 'n' && name[1] == 'b' &&
-        name[2] == 's' && name[3] == 'p')
-        return ' ';
-    if (len == 4 && name[0] == 'c' && name[1] == 'o' &&
-        name[2] == 'p' && name[3] == 'y')
-        return 'c';
-    if (len == 4 && name[0] == 'a' && name[1] == 'p' &&
-        name[2] == 'o' && name[3] == 's')
-        return '\'';
-
     /* Numeric entity: &#NNN; or &#xHH; */
     if (len > 1 && name[0] == '#') {
         unsigned long cp = 0;
@@ -58,19 +92,18 @@ static unsigned char resolve_entity(const char *name, int len)
                 if (c >= '0' && c <= '9') cp = cp * 10 + (c - '0');
             }
         }
-        if (cp > 0 && cp < 128) return (unsigned char)cp;
-        if (cp >= 128) {
-            /* Feed through UTF-8 decoder mapping */
-            utf8_decoder_t tmp;
-            utf8_init(&tmp);
-            if (cp < 0x100) {
-                /* Direct Latin-1 mapping */
-                unsigned char result = utf8_feed(&tmp, 0xC0 | (unsigned char)(cp >> 6));
-                if (result == 0)
-                    result = utf8_feed(&tmp, 0x80 | (unsigned char)(cp & 0x3F));
-                return result ? result : '?';
-            }
-            return '?';  /* Higher codepoints: best effort */
+        if (cp > 0)
+            return utf8_cp_to_cp437(cp);
+        return 0;
+    }
+
+    /* Named entity: linear search (table is ~90 entries, fast on 8088) */
+    {
+        const entity_map_t *e;
+        for (e = named_entities; e->name != NULL; e++) {
+            if ((int)strlen(e->name) == len &&
+                memcmp(e->name, name, len) == 0)
+                return utf8_cp_to_cp437(e->cp);
         }
     }
     return 0;  /* unknown entity */

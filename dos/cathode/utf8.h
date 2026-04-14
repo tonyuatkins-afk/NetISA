@@ -17,4 +17,7 @@ typedef struct {
 void          utf8_init(utf8_decoder_t *d);
 unsigned char utf8_feed(utf8_decoder_t *d, unsigned char byte);
 
+/* Map a Unicode codepoint directly to CP437 (for entity resolution) */
+unsigned char utf8_cp_to_cp437(unsigned long cp);
+
 #endif /* UTF8_H */

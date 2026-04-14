@@ -240,6 +240,12 @@ void html_dispatch_tag(html_parser_t *p)
         return;
     }
 
+    /* <body> implicitly closes <head> (handles missing </head>) */
+    if (tag_eq(tag, "body")) {
+        p->in_head = 0;
+        return;
+    }
+
     /* Skip everything in <head> or <script>/<style> */
     if (p->in_script || p->in_style || (p->in_head && !p->in_title)) return;
 

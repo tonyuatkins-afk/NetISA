@@ -163,6 +163,13 @@ static unsigned char map_extended(unsigned long cp)
     }
 }
 
+unsigned char utf8_cp_to_cp437(unsigned long cp)
+{
+    if (cp < 0x80) return (unsigned char)cp;
+    if (cp >= 0x80 && cp <= 0xFF) return lat1_to_cp437[cp - 0x80];
+    return map_extended(cp);
+}
+
 void utf8_init(utf8_decoder_t *d)
 {
     d->state = 0;

@@ -1,0 +1,56 @@
+<html>
+<head><title>Malformed HTML Test</title>
+<!-- Intentionally missing </head> -->
+<body>
+<h1>Malformed HTML Robustness Test</h1>
+
+<!-- Unclosed tags -->
+<p>This paragraph is never closed.
+<p>This one starts a new paragraph anyway.
+<p>And this one too.
+
+<!-- Nested incorrectly -->
+<b>Bold starts <i>italic starts</b> bold ends</i> italic ends
+
+<!-- Empty tags -->
+<p></p>
+<p>   </p>
+<h2></h2>
+
+<!-- Self-closing oddities -->
+<br/><br /><br>
+<hr/><hr /><hr>
+
+<!-- Deeply nested links (invalid but should not crash) -->
+<a href="/a"><a href="/b">Nested link text</a></a>
+
+<!-- Unknown tags (should be ignored gracefully) -->
+<custom-element>Custom content</custom-element>
+<div class="foo" id="bar" data-x="y">Div with attrs</div>
+
+<!-- Entity edge cases -->
+<p>&amp; &lt; &gt; &quot; &#39;</p>
+<p>&nonexistent; entity</p>
+<p>&#99999; out of range</p>
+<p>&amp;amp; double-encoded</p>
+
+<!-- Very long attribute -->
+<a href="https://example.com/very/long/path/that/goes/on/and/on/and/on/for/many/characters/to/test/buffer/limits/in/the/parser">Long URL link</a>
+
+<!-- Pre block with special chars -->
+<pre>
+  if (x &lt; 10 &amp;&amp; y &gt; 0) {
+      printf("Hello &amp; goodbye\n");
+  }
+</pre>
+
+<!-- Bare text outside any tags -->
+This is bare text outside paragraphs.
+
+<!-- Comment edge cases -->
+<!-- Normal comment -->
+<!--- Triple dash comment --->
+<!-- Comment with -- embedded -- dashes -->
+
+<p>If you see this, the parser survived all the edge cases above!</p>
+</body></html>
