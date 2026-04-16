@@ -197,16 +197,20 @@ After that, iterate until it stops breaking (or at least breaks less).
 
 ### DOS side
 
+```
 make all
+```
 
 ---
 
 ### Firmware
 
-cd firmware  
-idf.py set-target esp32s3  
-idf.py build  
-idf.py -p COMx flash monitor  
+```
+cd firmware
+idf.py set-target esp32s3
+idf.py build
+idf.py -p COMx flash monitor
+```
 
 ---
 
