@@ -15,6 +15,9 @@ This guide is intended to be self-contained. With the parts list below and this 
 - **Do NOT connect the ESP32 DevKit 5V pin to the ISA +5V rail.** The DevKit is USB-powered; sharing +5V could backfeed the USB port or create a ground loop. Only share GND between the two domains.
 - **10K pull-ups on all bus buffer /OE pins are mandatory.** When the CPLD is unprogrammed or being JTAG-programmed, its outputs float. Without pull-ups, buffers may enable in random directions and short ISA bus lines or ESP32 GPIO pins.
 - **The ATF1508AS CPLD is 5V native.** It tolerates the full ISA bus +5V environment directly on its I/O pins without level shifters on the ISA side. Do not place level shifters between the ATF1508AS and the ISA bus.
+- **Do NOT unplug the ESP32 USB cable while the ISA bus is powered.** When the ISA bus is live but the ESP32 is unpowered, the LVC8T245 level shifters have VCCA=5V but VCCB=0V with OE# tied to GND. The B-side output behavior is not guaranteed in this partial-power state and may sink current from the ESP32 GPIOs on re-plug. Always either (a) power both domains together, (b) plug in USB before powering the host, or (c) power down the host before unplugging USB.
+- **ESD: wear a grounded wrist strap** tied to a conductive bench mat, or at minimum touch a grounded metal surface before handling CMOS ICs. The ATF1508AS, ESP32-S3, LVC8T245, HCT245, and AHC14 are all ESD-sensitive. Low-humidity workshops are the biggest risk; if the room feels dry, assume any static touch is a damaging discharge and regrip accordingly.
+- **The `output_files/netisa.pin` file is the source of truth for CPLD pin numbers.** Every TQFP-100 pin number in this document is derived from that file. If Quartus is re-run with different settings or a different synthesis version, the fitter may reassign pins; re-verify pin numbers in this document against the new `netisa.pin` before wiring.
 
 ---
 
@@ -30,13 +33,19 @@ This guide is intended to be self-contained. With the parts list below and this 
 | 1 | ECS-100AX-160 | DIP-14 full-can oscillator | 16 MHz system clock for CPLD |
 | 1 | TexElec 8-bit ISA Prototype Card v1.0 | PCB | ISA edge connector breakout to 0.1" pin headers |
 | 1 | Solderless breadboard (large) | | Prototyping surface for ICs and passives |
-| ~16 | 100nF X7R ceramic capacitor | 0805 or leaded | Decoupling on every IC VCC pin |
+| 1 | **SMBJ5.0A** | SMB surface mount, or leaded equivalent P6KE6.8A | **TVS diode, ISA +5V rail surge protection; clamps at 6.4V peak, placed at ISA edge connector** |
+| ~17 | 100nF X7R ceramic capacitor | 0805 or leaded | Decoupling on every IC VCC pin (one per VCC pin) |
+| 1 | 10uF tantalum or aluminum electrolytic | leaded | Mid-range decoupling near oscillator (supplements 100nF + 470uF bulk) |
 | 1 | 470uF 16V electrolytic | leaded | Bulk decoupling on ISA +5V input |
-| ~12 | 10K 1/4W resistor | leaded | Pull-ups and pull-downs |
+| ~11 | 10K 1/4W resistor | leaded | Pull-ups and pull-downs (see Section J for the exact list) |
 | 1 | 100K 1/4W resistor | leaded | RESET DRV pull-down (out-of-machine operation) |
 | 1 | 100nF X7R ceramic | 0805 or leaded | RESET DRV RC filter capacitor |
-| many | Jumper wires, ribbon cables, 0.1" headers | | Connections |
+| 1 | **6-pin 0.1" male header** | through-hole or breadboard-style | **JTAG programming header (TDI, TMS, TCK, TDO, VCC, GND) for ATDH1150USB or FT232H** |
+| many | Jumper wires, 0.1" pitch male-male Dupont | 10cm and 20cm mix | Signal wiring between TexElec card, breadboard ICs, and ESP32 DevKit |
+| 2 | 16-18 AWG solid wire | ~30 cm each | **Heavy ground bridge (ISA GND to ESP32 GND) and +5V distribution trunk** — do not substitute thinner gauge |
 | 5 | Jumper shunts (0.1" pitch) | | Configuration jumpers (ADDR_J[2:0], SAFE_MODE, IRQ_SENSE) |
+| 1 | 3-position DIP switch | 0.1" pitch | ADDR_J[2:0] base-address selector |
+| 1 | ESD wrist strap + bench mat | | **Assembly-time static protection. Not optional for handling CMOS ICs.** |
 
 ---
 
@@ -77,7 +86,28 @@ Complete pin map from `phase0/cpld/output_files/netisa.pin`. Every assigned pin 
 | 62 | TCK | JTAG header, no pull-up |
 | 73 | TDO | JTAG header |
 
-Wire all four to a 6-pin header for ATDH1150USB or FT232H JTAG programmer. Include VCC and GND pins on the header.
+Wire all four to a 6-pin 0.1" male header for ATDH1150USB or FT232H JTAG programmer. Include VCC and GND pins on the header.
+
+**6-pin header pinout (Atmel/Microchip JTAG convention, matches ATDH1150USB ribbon cable):**
+
+```
+     ┌─────┐
+  1  │ TDI │  2  VCC (+5V, from ISA rail)
+  3  │ TMS │  4  GND
+  5  │ TCK │  6  TDO
+     └─────┘
+```
+
+- Pin 1: TDI → CPLD pin 4
+- Pin 2: VCC → +5V rail (programmer is bus-powered; some tools source VCC from the programmer instead, see notes)
+- Pin 3: TMS → CPLD pin 15
+- Pin 4: GND → common ground
+- Pin 5: TCK → CPLD pin 62
+- Pin 6: TDO → CPLD pin 73
+
+The ATDH1150USB drives TDI, TMS, TCK and reads TDO. VCC can be sourced either from the target (ISA +5V) OR from the programmer (switchable via jumper on the programmer itself, check the tool's manual). For Phase 0, target-powered is recommended so JTAG only works when the card is powered; for in-system programming during bringup you may prefer programmer-powered so the CPLD can be re-programmed with the host PC powered off.
+
+Software: `atmisp` (from Atmel/Microchip's WinCUPL distribution) drives the ATDH1150USB. Point it at `phase0/cpld/output_files/netisa.jed` and program.
 
 ### ISA address bus inputs (A0-A15, direct from ISA bus via optional buffer)
 
@@ -231,19 +261,21 @@ All 8 data lines pass through **HCT245 #1** (bidirectional).
 | B13 | IOW#    | TexElec → direct → CPLD | 100 |
 | A10 | IOCHRDY | TexElec ↔ direct ↔ CPLD (with 10K pull-up to +5V) | 31 |
 | B2  | RESET DRV | TexElec → RC filter → 74AHC14 → CPLD | 89 (labeled `RESET_n`) |
-| B21 | IRQ7    | TexElec ← direct ← CPLD | 20 (labeled `IRQ_OUT`) |
+| B21 | IRQ7    | TexElec ← direct ← CPLD | 20 (labeled `IRQ_OUT`) — see note below |
+
+**IRQ drive mode (Phase 0 note):** The Verilog actively drives IRQ_OUT HIGH or LOW when `IRQ_SENSE=1` (jumper installed), and tri-states it when `IRQ_SENSE=0`. Actively driving an ISA IRQ line is acceptable for Phase 0 bench testing where NetISA is the only card on IRQ7. On a production / multi-card system where IRQs may be shared, the CPLD should open-drain the IRQ (drive LOW to assert, tri-state to release, let the motherboard pull-up release HIGH). Track as a Phase 1+ hardening item in the architecture spec; no Phase 0 wiring change needed.
 
 ### Power and ground
 
 | ISA Pin | ISA Signal | Connection |
 |:-------:|------------|------------|
-| B3 | +5V | Bulk 470uF, then distribute to all 5V VCC rails (CPLD VCCIO/VCCINT, HCT245 #1 VCC, HCT245 #2 VCC, 74AHC14 VCC, oscillator VCC, LVC8T245 VCCA) |
-| B29 | +5V | Second +5V rail (tie to B3 via short wire, optional redundant) |
+| B3 | +5V | Bulk 470uF, then distribute to all 5V VCC rails (CPLD VCCIO/VCCINT, HCT245 #1 VCC, HCT245 #2 VCC, 74AHC14 VCC, oscillator VCC, LVC8T245 VCCA). Also SMBJ5.0A TVS cathode here. |
+| B29 | +5V | **Required** — tied to B3 via short 16-18 AWG wire at the edge connector |
 | B1 | GND | Common ground rail |
 | B10 | GND | Common ground rail |
 | B31 | GND | Common ground rail |
 
-**All three +5V and three GND pins on the ISA connector should be tied to their respective power rails for drive strength and noise margin.** Do not skip this: vintage motherboards expect balanced current draw across the ISA power pins.
+**All three +5V and three GND pins on the ISA connector must be tied to their respective power rails for drive strength and noise margin.** Do not skip this: vintage motherboards expect balanced current draw across the ISA power pins, and a single-point +5V feed increases contact resistance enough to cause voltage droop during CPLD switching activity.
 
 ### ISA pins NOT USED for Phase 0
 
@@ -474,7 +506,7 @@ Both are SN74HCT245N in DIP-20 packages. Pinout:
 | 20 | VCC | +5V (ISA rail) |
 | 10 | GND | common ground |
 | 1  | DIR | **+5V** (tied HIGH, fixed A→B direction) |
-| 19 | OE# | **GND** (always enabled); 10K pull-up to +5V as fail-safe |
+| 19 | OE# | **GND** (always enabled — this buffer's only job is to forward address lines whenever the card is live; no fail-safe pull-up because the GND tie is intentional and dominant) |
 | 2  | A1  | TexElec card SA0 header pin (ISA A31) |
 | 3  | A2  | TexElec card SA1 header pin (ISA A30) |
 | 4  | A3  | TexElec card SA2 header pin (ISA A29) |
@@ -519,7 +551,7 @@ The ECS-100AX-160 is a 14-pin DIP full-can crystal oscillator. It produces a 16 
 | 8 | CPLD pin 87 (CLK) |
 | 14 | +5V |
 
-**Decoupling**: 100nF X7R on pin 14 (VCC), placed within 5mm. Additionally, add a 10uF tantalum or electrolytic near the oscillator for low-frequency supply rejection if bringup reveals clock jitter.
+**Decoupling**: 100nF X7R on pin 14 (VCC), placed within 5mm. Additionally, the 10uF tantalum from the BOM is placed here, tying +5V to GND, for mid-band (1-100 kHz) supply rejection. On breadboarded prototypes the 10uF is not optional — trace inductance makes the 100nF-only decoupling insufficient for clean clock edges.
 
 **Routing**: Keep the trace from oscillator pin 8 to CPLD pin 87 short (< 5 cm) and away from the ISA data bus and the HCT245 data buffer to minimize crosstalk. If possible, use a short shielded or twisted-pair wire for this trace.
 
@@ -686,8 +718,12 @@ For the 8-bit TexElec proto card, there is no IOCS16# pin on the ISA connector. 
 ### 5V distribution (from ISA edge connector)
 
 ```
-ISA B3 (+5V)  ──┬── 470uF bulk electrolytic ── GND
-ISA B29 (+5V) ──┤
+ISA B3 (+5V)  ──┬── SMBJ5.0A TVS (cathode here, anode to GND)
+                │
+                ├── 470uF bulk electrolytic ── GND
+ISA B29 (+5V) ──┤   (16-18 AWG tie between B3 and B29 at the connector)
+                │
+                ├── 10uF tantalum ── GND (placed near oscillator)
                 │
                 ├── 100nF ── CPLD VCCIO pin 3
                 ├── 100nF ── CPLD VCCIO pin 18
@@ -709,9 +745,30 @@ ISA B29 (+5V) ──┤
                 └── 100nF ── LVC8T245 #2 VCCA
 ```
 
-**Bulk decoupling**: the 470uF electrolytic should be placed at the ISA edge connector side of the prototype, as close to ISA pin B3 as physically possible. This absorbs current transients from CPLD switching activity and prevents droop on the ISA +5V rail. A 16V or higher voltage rating is required.
+**TVS diode**: SMBJ5.0A (or leaded P6KE6.8A equivalent) placed within 10mm of ISA pin B3, cathode to +5V, anode to common ground. Clamps transient surges at ~6.4V peak to protect downstream ICs from PSU noise, hot-plug transients, and ESD events. Do NOT omit.
 
-**Local decoupling**: one 100nF X7R ceramic within 5mm of every VCC pin of every IC. Total: approximately 16 decoupling capacitors (8 for CPLD, 2 for HCT245 x2, 1 for 74AHC14, 1 for oscillator, 2 for LVC8T245 VCCA x2).
+**Bulk decoupling**: the 470uF electrolytic should be placed at the ISA edge connector side of the prototype, as close to ISA pin B3 as physically possible (downstream of the TVS). This absorbs current transients from CPLD switching activity and prevents droop on the ISA +5V rail. A 16V or higher voltage rating is required.
+
+**Mid-range decoupling**: a 10uF tantalum (or aluminum electrolytic) placed near the oscillator covers the 1-100 kHz band between the 100nF ceramic and the 470uF bulk. Improves clock stability on breadboarded prototypes where trace inductance is higher than a PCB.
+
+**Local decoupling**: one 100nF X7R ceramic within 5mm of every VCC pin of every IC. Total: 17 decoupling capacitors (8 for CPLD, 2 for HCT245 x2, 1 for 74AHC14, 1 for oscillator, 2 for LVC8T245 VCCA x2, 2 for LVC8T245 VCCB x2, 1 for RESET RC filter), plus 1x 10uF tantalum and 1x 470uF bulk.
+
+### Power-on sequencing (important for level shifter safety)
+
+The LVC8T245 level shifters have two power supplies: VCCA (+5V from ISA) and VCCB (+3.3V from ESP32 DevKit USB). If one rail is present without the other, and OE# is tied to GND (always enabled as in Phase 0), the B-side output behavior is indeterminate per the TI datasheet. In practice this manifests as unexpected current draw on the ESP32 GPIOs when USB is re-connected after the ISA bus is already live.
+
+**Safe sequences** (any of these is fine):
+
+1. **Both-together** (preferred): plug ESP32 DevKit USB into host, then power on the vintage-PC host. Both 3.3V and 5V rails come up within milliseconds of each other.
+2. **USB first, then host**: plug USB → wait for ESP32 "PBOOT asserted" message in serial console → power on host.
+3. **Host first, USB immediately**: acceptable if the USB cable is plugged in within ~1 second of host power-on. The 470uF bulk cap keeps the +5V rail settled during the brief partial-power window.
+
+**Unsafe** (do not do):
+
+- Powering on the host with the ESP32 USB cable unplugged and leaving it unplugged for more than a few seconds.
+- Unplugging the ESP32 USB cable while the ISA bus is live.
+
+**Phase 1+ hardening note**: a future revision should interlock LVC8T245 OE# via the ESP32's PBOOT signal so the level shifter is electrically gated on ESP32 firmware readiness. For Phase 0 the operational-discipline rule above is sufficient; the always-enabled OE# simplifies first-bringup debugging. Add the interlock to the Phase 1 spec.
 
 ### 3.3V distribution (from ESP32 DevKit)
 
@@ -768,10 +825,11 @@ All resistors are 10K 1/4W unless otherwise noted.
 | 10K | CPLD pin 4 (TDI) | +5V | JTAG idle-high per ATF1508AS datasheet |
 | 10K | CPLD pin 15 (TMS) | +5V | JTAG idle-high per ATF1508AS datasheet |
 | 10K | HCT245 #1 pin 19 (OE#) | +5V | Fail-safe disable when 74AHC14 unavailable |
-| 10K | HCT245 #2 pin 19 (OE#) | +5V | Fail-safe disable (redundant with direct-GND tie) |
 | **100K** | ISA B2 (RESET DRV) | GND | Out-of-machine bench testing (keeps RESET LOW when not in slot) |
 
-Total: 11x 10K and 1x 100K resistor.
+Total: **10x 10K** and **1x 100K** resistor.
+
+(HCT245 #2 pin 19 is hard-tied to GND and does not get a pull-up — the GND tie is the intended always-enabled configuration. An earlier draft of this document listed a redundant pull-up here; that entry has been removed.)
 
 ---
 
@@ -779,7 +837,8 @@ Total: 11x 10K and 1x 100K resistor.
 
 | Qty | Value | Location |
 |----:|-------|----------|
-| 1 | 470uF electrolytic | ISA +5V bulk, at edge connector |
+| 1 | 470uF electrolytic | ISA +5V bulk, at edge connector (downstream of SMBJ5.0A TVS) |
+| 1 | 10uF tantalum or aluminum | Near oscillator, supplements mid-band (1-100 kHz) |
 | 8 | 100nF X7R | CPLD VCCIO x6 + VCCINT x2 |
 | 2 | 100nF X7R | HCT245 #1 VCC, HCT245 #2 VCC |
 | 1 | 100nF X7R | 74AHC14 VCC |
@@ -788,7 +847,7 @@ Total: 11x 10K and 1x 100K resistor.
 | 2 | 100nF X7R | LVC8T245 #1 VCCB, LVC8T245 #2 VCCB |
 | 1 | 100nF X7R | RESET DRV RC filter cap |
 
-Total: 1x 470uF + 17x 100nF.
+Total: 1x 470uF + 1x 10uF + 17x 100nF.
 
 Place every 100nF within 5mm of the pin it decouples. The PA0036 breakout boards for the LVC8T245 may already include on-board decoupling; verify on the breakout silkscreen before adding extra caps.
 
@@ -834,43 +893,65 @@ The 5 MHz or 10 MHz sample rate is sufficient for capturing ISA bus cycles; 100 
 
 Work through these gates IN ORDER. Do not proceed past a failed gate.
 
+### Assembly prep (do first)
+
+- [ ] ESD wrist strap on, clipped to grounded bench mat or earthed reference
+- [ ] All ICs kept in anti-static bags until ready to insert
+- [ ] Multimeter + oscilloscope + logic analyzer powered on and verified functional against a known-good reference
+
 ### Before powering on
 
-- [ ] All 8 CPLD GND pins wired to common ground
+- [ ] All 9 CPLD GND pins wired to common ground (includes pin 90 `GND+`)
 - [ ] All 8 CPLD VCC pins wired to +5V with individual 100nF decoupling
-- [ ] 470uF bulk cap on ISA +5V, polarity verified
+- [ ] SMBJ5.0A TVS diode placed at ISA edge connector, cathode to B3 (+5V), anode to GND
+- [ ] 470uF bulk cap on ISA +5V, polarity verified (downstream of TVS)
+- [ ] 10uF tantalum placed near oscillator, polarity verified
+- [ ] ISA B3 and B29 (+5V) tied together at edge connector with 16-18 AWG
+- [ ] ISA B1, B10, B31 (GND) all tied to common ground rail
 - [ ] SLOT16_n (CPLD pin 78) tied to +5V
 - [ ] ADDR_J DIP switch installed with 10K pull-ups
 - [ ] SAFE_MODE and IRQ_SENSE jumper headers installed
 - [ ] 16 MHz oscillator wired per Section F
 - [ ] RESET DRV filter (10K + 100nF + 74AHC14 + 100K pull-down) wired per Section G Gate 1
 - [ ] HCT245 #1 installed and wired per Section E (data bus)
-- [ ] HCT245 #2 installed and wired per Section E (address buffer)
+- [ ] HCT245 #2 installed and wired per Section E (address buffer, OE# hard-tied to GND, no pull-up)
 - [ ] 74AHC14 installed, all 3 used gates wired, unused inputs (pins 9, 11, 13) tied to GND
-- [ ] LVC8T245 #1 installed and wired per Section D, PRW inverter connected
-- [ ] LVC8T245 #2 installed and wired per Section D, DIR tied HIGH
+- [ ] LVC8T245 #1 installed and wired per Section D, PRW inverter connected, OE# tied to GND
+- [ ] LVC8T245 #2 installed and wired per Section D, DIR tied HIGH, OE# tied to GND
 - [ ] ESP32 DevKit positioned on breadboard with GND bridged to ISA GND via 16-18 AWG wire
 - [ ] ESP32 DevKit 3V3 pin wired to both LVC8T245 VCCB pins
 - [ ] ESP32 GPIO19 and GPIO20 floating (not connected to anything)
-- [ ] All 10K pull-ups and pull-downs installed per Section J
-- [ ] All 17 decoupling capacitors installed per Section K
+- [ ] All 10 10K pull-ups and 1 100K pull-down installed per Section J
+- [ ] All 19 decoupling capacitors installed per Section K (17x 100nF + 1x 10uF + 1x 470uF)
 - [ ] TP0 and TP1 broken out to a header for logic analyzer
-- [ ] JTAG header wired for programming the CPLD
+- [ ] JTAG 6-pin header wired per Section A JTAG subsection (TDI/VCC/TMS/GND/TCK/TDO pinout)
 
-### Pre-power checks
+### Pre-power checks (with card OUT of the ISA slot)
 
-- [ ] Multimeter resistance from ISA +5V (B3) to GND: > 1 kΩ
+- [ ] Multimeter resistance from ISA +5V (B3) to GND: > 1 kΩ (and NOT a dead short)
 - [ ] Multimeter resistance from CPLD VCCINT (pin 39 and pin 91) to GND: > 1 kΩ
 - [ ] Multimeter resistance from HCT245 VCC, 74AHC14 VCC, oscillator VCC, LVC8T245 VCCA each to GND: > 1 kΩ
 - [ ] Multimeter continuity: ISA GND ↔ ESP32 DevKit GND: < 1 Ω
 - [ ] Multimeter continuity: ESP32 3V3 ↔ both LVC8T245 VCCB pins: < 1 Ω
+- [ ] Multimeter polarity check: SMBJ5.0A installed correctly (cathode to +5V, anode to GND)
+- [ ] Multimeter polarity check: 470uF and 10uF caps correctly oriented (watch the bands/stripes)
 - [ ] No visible solder bridges on breakout boards or breadboard
-- [ ] CPLD .jed file is flashed and verified via JTAG (done before first power-on of the ISA bus)
+- [ ] Every ISA address line (SA0-SA15) has continuity from TexElec card header to CPLD pin (use beep-test on multimeter; takes a few minutes, catches mis-wires fast)
+- [ ] Every ISA control signal (IOR#, IOW#, AEN, RESET DRV, IOCHRDY, IRQ7) has the documented connection
 
-### Power on
+### Program the CPLD (before first ISA power-on)
+
+- [ ] Bench-power the card via the JTAG programmer (VCC sourced from programmer), OR plug into host with host OFF and use the programmer on top of the host's +5V standby rail
+- [ ] Connect ATDH1150USB to the JTAG header per the pinout in Section A
+- [ ] Run `atmisp` → load `phase0/cpld/output_files/netisa.jed` → Program
+- [ ] Verify programming success: `atmisp` → Verify (optional but recommended)
+- [ ] **Critical**: confirm fuse settings — JTAG=ON, TDI_PULLUP=ON, TMS_PULLUP=ON. Wrong settings can brick the chip. POF2JED should have already set these; `atmisp` displays the fuse state before program.
+
+### Power on (live test)
 
 - [ ] Insert card into ISA slot with host PC powered OFF
-- [ ] Power on the host
+- [ ] Plug ESP32 DevKit USB cable into the host dev machine (or a USB power source)
+- [ ] Power on the vintage-PC host
 - [ ] Within 5 seconds, measure +5V on CPLD VCCINT pin 39: between 4.75V and 5.25V
 - [ ] Within 5 seconds, measure +3.3V on LVC8T245 VCCB: between 3.15V and 3.45V
 - [ ] Logic analyzer shows 16 MHz clock on CPLD CLK (pin 87): clean square wave, 50% duty
@@ -878,10 +959,54 @@ Work through these gates IN ORDER. Do not proceed past a failed gate.
 - [ ] ESP32 serial console shows "PBOOT asserted. Card ready for ISA transactions."
 - [ ] Measure CPLD pin 28 (PBOOT input from ESP32): HIGH (3.3V or higher)
 - [ ] No smoke, no smell, no heat above room temperature + 10°C on any IC
+- [ ] **Do NOT unplug the ESP32 USB cable at any point while the ISA bus is powered.** See "Power-on sequencing" in Section I.
 
 ### Functional validation
 
 Once all pre-power and power-on checks pass, proceed to the 9-gate validation checklist in `phase0/README.md` starting at Gate 0.
+
+---
+
+## M. Troubleshooting (first-bringup failure modes)
+
+If a pre-power or power-on check fails, consult this table before probing further. Most bringup failures match one of the patterns below.
+
+### Pre-power resistance check fails
+
+| Symptom | Likely cause | First diagnostic |
+|---------|--------------|------------------|
+| ISA +5V to GND < 100Ω | 470uF cap reversed, OR 10uF tantalum reversed, OR solder bridge on a VCC pin | Visually inspect cap polarity (band/stripe = negative on electrolytic, bar on tantalum = positive). Pull each cap in turn and re-measure. |
+| ISA +5V to GND < 1 kΩ | SMBJ5.0A installed backwards (cathode to GND instead of +5V) | Pull TVS diode, re-measure. If back to normal, reinstall with correct polarity. Cathode = band on the case. |
+| CPLD VCCINT to GND < 1 kΩ | CPLD decoupling cap shorted, OR CPLD breakout board has a solder bridge between VCC and GND | Visually inspect CPLD breakout under magnification. |
+| Any LVC8T245 VCCA to GND < 1 kΩ | VCCA/VCCB cross-wired (5V and 3.3V shorted through the part) | Double-check breakout pinout silkscreen; VCCA is ISA-side, VCCB is ESP32-side. |
+| ISA GND ↔ ESP32 GND > 1 Ω | Insufficient ground bridge, wrong-gauge wire, or a bad crimp | Replace with 16-18 AWG solid wire. This connection must be a dead short. |
+
+### Power-on fails
+
+| Symptom | Likely cause | First diagnostic |
+|---------|--------------|------------------|
+| Host PC posts with no issues, but no signs of life on the card | CPLD not programmed, OR 16 MHz clock not running, OR ISA AEN wrong polarity | Scope CPLD pin 87 (CLK) for 16 MHz square wave. If absent: check oscillator VCC and GND, and the enable pin 1 (tied to +5V). |
+| Host PC beeps post-fail or hangs | Card is asserting IOCHRDY LOW indefinitely (stuck `iochrdy_hold=1`), OR shorting a bus line | Pull the card and boot without it. If the host now posts, an ISA bus line is shorted or IOCHRDY is stuck. Scope IOCHRDY and TP1 (`iochrdy_hold`) on next insertion. |
+| ESP32 serial console silent | USB cable not plugged in, OR wrong COM port selected in `idf.py monitor`, OR ESP32 firmware not flashed | `idf.py monitor` with the correct port. Verify ESP32 DevKit power LED is on. |
+| ESP32 serial console shows "NetISA" but "PBOOT" never asserts | Firmware bug, OR GPIO21 (PBOOT) not connected to CPLD pin 28 | Meter CPLD pin 28: should rise to 3.3V within a few seconds of ESP32 boot. If not, check GPIO21 wire. |
+| Logic analyzer shows chip_sel (TP0) asserting but no PSTROBE | CPLD chip_sel logic OK but PSTROBE generation broken, OR PSTROBE wire broken, OR LVC8T245 #2 VCCA or VCCB missing | Meter CPLD pin 52 during a probe access; meter LVC8T245 #2 A6 and B6 and both supplies. |
+| Random bus activity / ISA bus errors | Ground bridge weak or intermittent | Replace ISA↔ESP32 ground bridge with a fresh 16-18 AWG wire. Re-seat every ground connection at the ISA edge (B1, B10, B31). |
+| Smoke, smell, or hot IC | Short or reverse polarity | Power OFF IMMEDIATELY. Do not touch the hot IC. Assume the part is destroyed; order a replacement. Before re-powering, find the short with the pre-power resistance checks in reverse. |
+
+### CPLD programming fails
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| ATDH1150USB reports "device not detected" | JTAG cable pinout wrong, OR TDI/TMS/TCK/TDO swapped | Verify the pinout in Section A. TDI is pin 1, TDO is pin 6 on the programmer side. |
+| Programming completes but device fails verify | Fuse settings wrong (JTAG, TDI_PULLUP, TMS_PULLUP) | Re-run POF2JED with the correct flags. Re-program. |
+| Chip appears "bricked" (no response to JTAG after program) | Wrong fuse settings disabled JTAG on the chip | 12V JTAG recovery is possible but involves specialized tooling. Contact Microchip support or use a fresh ATF1508AS. |
+
+### IRQ tests fail
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| IRQ_OUT never asserts | IRQ_SENSE jumper removed, OR PIRQ wire broken, OR PIRQ at 2.5V (below Vih) | Check jumper. Meter PIRQ at CPLD pin 56 with ESP32 asserting HIGH: should read 3.3V. If 0V, the wire is open. If 2-2.5V, ESP32 GPIO may be mis-configured. |
+| IRQ_OUT asserts but host OS doesn't service it | Host IRQ7 not enabled in BIOS, OR another card is on IRQ7 | Enter BIOS setup, confirm IRQ7 is available. Remove any other cards from the bus during Phase 0. |
 
 ---
 
@@ -890,6 +1015,9 @@ Once all pre-power and power-on checks pass, proceed to the 9-gate validation ch
 | Date | Change |
 |------|--------|
 | 2026-04-11 | Initial version generated from Quartus II 13.0sp1 fitter pin assignments. `netisa.pin` timestamp: 2026-04-11, fit target EPM7128STC100-15, 95/128 macrocells, 61/84 pins. |
+| 2026-04-23 | Quality-gate pass before first-bringup wiring. Added SMBJ5.0A TVS diode to BOM + wiring + checklist. Added ESD and USB-cable-stability warnings. Added Power-on sequencing subsection (Section I) covering LVC8T245 partial-power behavior. Added 10uF tantalum mid-band decoupling. Added ATDH1150USB 6-pin header pinout to Section A. Added 6-pin JTAG header, ESD strap, and heavy-gauge wire specifics to BOM. Added IRQ Phase 1+ open-drain note to Section B. Fixed "optional redundant" → "required" on ISA B29. Fixed HCT245 #2 OE# description (removed redundant pull-up; GND tie is intentional and dominant). Added CPLD programming step between pre-power and power-on in the checklist. Added Section M Troubleshooting with common first-bringup failure modes. |
+
+**Pin-number tight coupling**: the TQFP-100 pin numbers throughout this document are derived from `phase0/cpld/output_files/netisa.pin`. If Quartus is re-run with different settings or a newer version, the fitter may reassign pins. Re-verify every pin number in this document against the regenerated `netisa.pin` before wiring. The `diff` should be zero changes.
 
 ## References
 
