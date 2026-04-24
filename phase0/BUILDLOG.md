@@ -92,3 +92,22 @@ Full review passed. No bugs found. Three issues flagged, none blocking Phase 0:
 6. Flash ESP32 firmware: `idf.py -p COMx flash monitor`
 7. Boot DOS machine, run NISATEST.COM
 8. Walk the 9-gate validation checklist with logic analyzer
+
+## 2026-04-23: Parts Received
+
+All four orders from the 2026-04-11 BOM have arrived. Every line of the Phase 0 parts list is now on the bench. Bench photo archived at `barelybooting.com/img/netisa-parts-arrival.jpg`.
+
+### Received
+
+| Source | Items | Status |
+|--------|-------|--------|
+| DigiKey | ATF1508AS-10AU100 CPLDs, ESP32-S3-WROOM-1U-N8R8 modules, SN74LVC8T245 level shifters, 74HCT245 buffers, oscillator, passives (1% resistors, electrolytic + ceramic caps, TVS + Schottky + signal diodes), ATDH1150USB JTAG programmer, QFP breakout boards | All received, anti-static bagged, EcoSonic VpCI-125 HP protected |
+| TexElec | 2x 8 Bit ISA Prototype Card v1.0 (yellow PCB, 62-pin ISA edge connector pre-routed) | Both received |
+| Amazon | QFP breakout boards (backup), breadboard kit, 2.4 GHz external antenna with U.FL pigtail, ribbon cables, pin headers, jumper caps | All received |
+| DreamSourceLab | DSLogic Plus logic analyzer (16ch, 400MHz) | Received |
+
+Enough redundancy across the CPLD and ESP32 lines to absorb one or two bring-up casualties without halting.
+
+### Gate to bench assembly: OPEN
+
+The "Next Steps (When Parts Arrive)" checklist above is now unblocked. Starting at step 1 (Quartus fitter report pin extract) and proceeding through the 9-gate validation checklist. Expecting at least one thing to go wrong immediately.

@@ -2,9 +2,9 @@
 
 **An ISA coprocessor that tries to give old PCs a way to talk to the modern internet.**
 
-> **Status:** Hardware isn’t built yet. Parts are on the way (DigiKey, Amazon, TexElec... this escalated a bit).  
-> Firmware, DOS stack, and apps are working in DOSBox-X.  
-> Real hardware bring-up is next, and I’m fully expecting at least one thing to go wrong immediately.
+> **Status (2026-04-23):** Parts landed. Every line of the BOM is now on the bench: TexElec 8-bit ISA prototype card, ESP32-S3 modules, ATF1508AS CPLDs, passives, connectors, programmer, anti-static everything.  
+> Firmware, DOS stack, and apps are working in DOSBox-X. CPLD logic passes its testbench (160/160).  
+> Bench assembly starts next. Fully expecting at least one thing to go wrong immediately.
 
 > **https://barelybooting.com/** — build log, screenshots  
 > • https://www.youtube.com/@BarelyBooting — videos  
@@ -96,7 +96,7 @@ None of that guarantees it works once real signals are involved.
 
 ## What does not work yet
 
-- No physical card assembled
+- No physical card assembled (parts are on the bench; soldering iron is next)
 - No validation on real ISA machines
 - No real bus timing verification
 - No actual TLS session from DOS over the card
@@ -181,12 +181,12 @@ The DOS side uses a TSR and INT 63h API to talk to it.
 
 ## Current phase
 
-Right now this is still pre-hardware:
+Parts gathered (2026-04-23). Hardware bring-up is finally unblocked:
 
-1. Finish gathering parts
-2. Wire up prototype
-3. Validate basic bus behavior
-4. Connect DOS side to real hardware
+1. ~~Finish gathering parts~~ (done)
+2. Wire up prototype on the TexElec 8-bit ISA prototype card
+3. Validate basic bus behavior (address decode, read/write cycles, IOCHRDY)
+4. Connect DOS side to real hardware (swap the stub backend for the real register file)
 5. See what breaks first
 
 After that, iterate until it stops breaking (or at least breaks less).
