@@ -95,12 +95,18 @@ void cpu_detect(hw_profile_t *hw)
         }
     }
 
-    /* PIT timing -> approximate MHz. The constant 1000 is calibrated for the
-     * tight loop in cpu_pit_loop; tune in DOSBox-X then on real iron. */
-    loop_count = cpu_pit_loop(1193); /* one PIT tick at the standard rate */
+    /* PIT timing -> approximate MHz. cpu_pit_loop times one millisecond and
+     * returns the iteration count. Each loop iteration is roughly 10 CPU
+     * cycles on 386+/486 (in al,dx + test + inc + jmp), so mhz = count/100
+     * gives the right order of magnitude. The constant is rough by design;
+     * actual cycles per iter vary across 286/386/486/Pentium. DOSBox-X's
+     * PIT-2 OUT2 line behavior makes the count unreliable under emulation
+     * but real iron lands within ~10% of the nominal. */
+    loop_count = cpu_pit_loop(1193);
     if (loop_count == 0) loop_count = 1;
-    mhz = (loop_count + 999UL) / 1000UL;
+    mhz = (loop_count + 49UL) / 100UL;
     if (mhz > 999) mhz = 999;
+    if (mhz == 0)  mhz = 1;
     hw->cpu_mhz = (u16)mhz;
     hw->cpu_nominal_mhz = nearest_nominal(hw->cpu_mhz);
     hw->cpu_overclock = (hw->cpu_mhz > (hw->cpu_nominal_mhz + (hw->cpu_nominal_mhz / 10))) ? HTRUE : HFALSE;

@@ -254,12 +254,28 @@ static hbool emu8000_present(u16 sb_base)
 
 static hbool sb_asp_present(u16 base)
 {
-    /* Mixer index 83h = ASP version on SB16 ASP. */
-    ad_outp(base + 4, 0x83);
-    {
-        u8 v = ad_inp(base + 5);
-        return (v != 0xFF && v != 0x00) ? HTRUE : HFALSE;
+    /* DSP command 04h returns the ASP/CSP version on SB16 ASP/CSP cards as
+     * two bytes (major, minor). Plain SB16 (no ASP) DSPs ignore command 04h
+     * and never set the data-ready bit, so we time out and report absent.
+     * The earlier mixer-index 0x83 check produced false positives on
+     * DOSBox-X's plain SB16 emulation because index 0x83 reads back
+     * undefined values rather than zero. */
+    u16 i;
+    u8 maj;
+    for (i = 0; i < 100; i++) {
+        if ((ad_inp(base + 0x0C) & 0x80) == 0) break;
+        ad_delay_us(5);
     }
+    if (i == 100) return HFALSE;
+    ad_outp(base + 0x0C, 0x04);
+    for (i = 0; i < 200; i++) {
+        if (ad_inp(base + 0x0E) & 0x80) {
+            maj = ad_inp(base + 0x0A);
+            return (maj > 0 && maj < 0x80) ? HTRUE : HFALSE;
+        }
+        ad_delay_us(5);
+    }
+    return HFALSE;
 }
 
 static void parse_blaster(u16 *base, u8 *irq, u8 *dlo, u8 *dhi, u16 *mpu)
@@ -316,7 +332,11 @@ static void probe_sb(hw_profile_t *hw)
             hw->aud_devices |= AUD_SB_20;
             add_card(hw, "Sound Blaster 2.0 (DSP %u.%02u)", maj, min);
         } else if (maj == 3) {
-            if (opl3_present(base + 8)) {
+            /* SB-integrated OPL is at base+0..base+3, not base+8. SB Pro 2
+             * has OPL3 here; SB Pro 1 has dual OPL2. probe_adlib also runs
+             * earlier and may have set hw->opl=OPL_OPL3 if the chip is
+             * mirrored at 388h, so honour that as a backup signal. */
+            if (opl3_present(base) || hw->opl == OPL_OPL3) {
                 hw->aud_devices |= AUD_SB_PRO2;
                 hw->opl = OPL_OPL3;
                 add_card(hw, "Sound Blaster Pro 2 (DSP %u.%02u)", maj, min);
@@ -328,7 +348,7 @@ static void probe_sb(hw_profile_t *hw)
         } else if (maj == 4) {
             hw->opl = OPL_OPL3;
             if (emu8000_present(base)) {
-                if (!opl_timer_test(base + 8)) {
+                if (!opl_timer_test(base)) {
                     hw->aud_devices |= AUD_SB_AWE64;
                     hw->opl = OPL_CQM;
                     add_card(hw, "Sound Blaster AWE64 (DSP %u.%02u)", maj, min);
@@ -397,15 +417,19 @@ static void probe_gus(hw_profile_t *hw)
         v = strtol(env, &end, 10); irq = (u8)v;  env = end;
     }
     if (base == 0) {
-        u16 candidates[] = { 0x220, 0x240, 0x250, 0x260, 0 };
-        u16 i;
-        for (i = 0; candidates[i]; i++) {
-            if (gus_reset(candidates[i])) { base = candidates[i]; break; }
-        }
-        if (base == 0) return;
-    } else {
-        if (!gus_reset(base)) return;
+        /* No ULTRASND env. GUS detection requires the user to set the
+         * variable; skip blind probing because gus_reset's "is the port
+         * non-FF" check is too loose to distinguish a real GF1 from a SB
+         * card sharing the same base. Leaves GUS unreported when ULTRASND
+         * is missing, which is correct DOS practice. */
+        return;
     }
+    if (hw->sb.base != 0 && base == hw->sb.base) {
+        /* SB and GUS both claim this base. SB already won; GUS is almost
+         * certainly a stale ULTRASND from a different hardware era. */
+        return;
+    }
+    if (!gus_reset(base)) return;
     ram_kb = gus_dram_size(base);
     hw->gus.base = base;
     hw->gus.irq  = irq;
