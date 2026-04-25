@@ -1,0 +1,18 @@
+# Build artifacts
+*.obj
+*.o32
+*.EXE
+*.exe
+*.map
+*.err
+*.sym
+*.LOG
+*.log
+
+# Config files (user-specific)
+CHIME.CFG
+
+# Editor backups
+*~
+*.bak
+*.swp
