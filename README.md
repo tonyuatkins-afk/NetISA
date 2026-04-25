@@ -239,11 +239,11 @@ NetISA ships with a suite of DOS applications that leverage the card's networkin
 
 | App | Description | Status |
 |-----|-------------|--------|
-| HEARO | Music player with hardware recognition | Foundation in progress |
-| CHIME | Time sync (HTTP Date header v1.0; SNTP/NTS in v1.1) | Foundation in progress |
-| CATHODE | Web browser | Planned |
-| DISCORD | Chat client | Planned |
-| CLAUDE | LLM client | Planned |
+| HEARO | Music player with hardware recognition | v1.0 foundation |
+| CHIME | Time sync (HTTP Date header v1.0; SNTP/NTS in v1.1) | v1.0 foundation |
+| CATHODE | Web browser, sort of | v0.2, builds clean |
+| DISCORD | Chat client (v2 ground-up rebuild) | builds clean |
+| CLAUDE | Anthropic API client | builds clean |
 | COURIER | Email client | Planned |
 | CRATE | Cloud filesystem | Planned |
 | KIOSK | Package manager | Planned |

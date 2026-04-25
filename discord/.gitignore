@@ -1,0 +1,19 @@
+# Build artifacts
+*.obj
+*.o32
+*.EXE
+*.exe
+*.map
+*.err
+*.sym
+*.LOG
+*.log
+build/
+
+# Config files (user-specific)
+DISCORD.CFG
+
+# Editor backups
+*~
+*.bak
+*.swp
