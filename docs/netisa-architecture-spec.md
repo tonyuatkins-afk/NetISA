@@ -263,7 +263,7 @@ The card asserts IOCS16# when installed in a 16-bit slot, enabling word-width da
 | 0x0A | Session Count (active) | Reserved | 8-bit |
 | 0x0B | Session Capacity (max) | Reserved | 8-bit |
 | 0x0C | Network Status | Reserved | 8-bit |
-| 0x0D | Signal Quality (WiFi, non-cached — see Section 5.3.5) | Reserved | 8-bit |
+| 0x0D | Signal Quality (WiFi, non-cached, see Section 5.3.5) | Reserved | 8-bit |
 | 0x0E-0x0F | Reserved | Reserved | 8-bit |
 
 *Ports 0x04-0x05 support 16-bit transfers when IOCS16# is asserted (card in 16-bit slot). In an 8-bit slot, only port 0x04 is used for data, one byte at a time.
@@ -281,7 +281,7 @@ The card asserts IOCS16# when installed in a 16-bit slot, enabling word-width da
 | 6 | BOOT_COMPLETE | CPLD (when PBOOT asserted by ESP32) | Reset only | ESP32 firmware has completed initialization |
 | 7 | Reserved | | | Always 0 in v1 (was ESP32_ALIVE in early drafts, removed) |
 
-Bits 0-2 are managed by the ESP32 and pushed to the CPLD status cache via the cache-push protocol (see Section 5.4.6). Bits 3, 5, 6 are managed by the CPLD hardware and merged at read time from CPLD-local signals (J3 jumper, watchdog counter, synchronized PBOOT pin). This register is **the only register cached in the CPLD**; it reads with zero wait states. All other registers are cache-miss reads that insert IOCHRDY wait states while the ESP32 responds via the parallel bus — see Section 5.4.6 for the rationale and Section 5.3.5 for the wait-state protocol.
+Bits 0-2 are managed by the ESP32 and pushed to the CPLD status cache via the cache-push protocol (see Section 5.4.6). Bits 3, 5, 6 are managed by the CPLD hardware and merged at read time from CPLD-local signals (J3 jumper, watchdog counter, synchronized PBOOT pin). This register is **the only register cached in the CPLD**; it reads with zero wait states. All other registers are cache-miss reads that insert IOCHRDY wait states while the ESP32 responds via the parallel bus. See Section 5.4.6 for the rationale and Section 5.3.5 for the wait-state protocol.
 
 ### 2.6.1 Driver Modes
 
@@ -289,7 +289,7 @@ The CPLD's register interface is a mode-agnostic byte shuttle: it decodes addres
 
 v1 firmware implements **Session Mode** only. NIC Mode and NIC + kTLS Offload Mode are reserved for future firmware releases on the same PCB and the same CPLD design. The register map, CPLD logic, and electrical interface are already compatible with all three modes; only the ESP32 firmware needs to be extended.
 
-**Mode 0 — Session Mode (v1, default)**
+**Mode 0: Session Mode (v1, default)**
 
 The card owns the entire TCP/IP stack, TLS state, and session multiplexing. The host speaks to the card at the TLS-session level via the command/response mailbox model in Section 2.7: "open a TLS session to `host.example.com:443`", "send N bytes on session 3", "receive any available bytes on session 1". The retro CPU never touches TCP, IP, DNS, or TLS.
 
@@ -299,9 +299,9 @@ The card owns the entire TCP/IP stack, TLS state, and session multiplexing. The 
 
 This is the only mode that works on XT-class (8088/8086) hardware, where the host is too slow to run any TCP/IP stack in software, and it is the only mode shipped in v1.
 
-**Mode 1 — NIC Mode (v2.0 reserved)**
+**Mode 1: NIC Mode (v2.0 reserved)**
 
-The card presents as an Ethernet packet interface. The host transmits and receives raw Ethernet (or IP) frames through the card's bulk data port and runs its own TCP/IP stack (Linux kernel, Windows NDIS, BSD networking). The card becomes a WiFi/Ethernet bridge in this mode — it does not see TCP connections or TLS sessions, and it does not participate in routing or name resolution.
+The card presents as an Ethernet packet interface. The host transmits and receives raw Ethernet (or IP) frames through the card's bulk data port and runs its own TCP/IP stack (Linux kernel, Windows NDIS, BSD networking). The card becomes a WiFi/Ethernet bridge in this mode. It does not see TCP connections or TLS sessions, and it does not participate in routing or name resolution.
 
 - Host OS examples: Windows 95/98/NT 4.0 (NDIS miniport), Linux (net_device), NetBSD/FreeBSD
 - Host CPU requirement: 386+ (must be able to run a TCP/IP stack at usable speed)
@@ -309,7 +309,7 @@ The card presents as an Ethernet packet interface. The host transmits and receiv
 
 In this mode, TLS is the host operating system's responsibility. The host uses whatever TLS library it already has (OpenSSL, SChannel, mbedTLS). NetISA provides no crypto acceleration in pure NIC Mode; it only provides the physical link. This mode is most useful as the foundation for Mode 2.
 
-**Mode 2 — NIC + kTLS Offload Mode (v2.5 reserved)**
+**Mode 2: NIC + kTLS Offload Mode (v2.5 reserved)**
 
 An enhancement of NIC Mode in which the host OS's kernel TCP/IP stack establishes TCP connections and performs the one-shot TLS 1.3 handshake in software, then hands the derived session keys down to the card via a key-install command. After the rekey, the card transparently performs AES-GCM (or ChaCha20-Poly1305) record framing on the identified TCP flow, so host userspace reads and writes plaintext while the wire carries ciphertext.
 
@@ -345,7 +345,7 @@ When NIC Mode firmware is implemented, registers 0x03, 0x0E, and 0x0F take on th
 
 Bulk packet payload flows through the data registers (0x04/0x05) using the same 16-bit IOCS16 mechanism as Session Mode bulk transfers: the host reads or writes `length` bytes per packet through `REP INSW` / `REP OUTSW` (or byte-at-a-time in an 8-bit slot), then acknowledges (RX) or commits (TX) via reg 0x03.
 
-This allocation is a contract for v2+ firmware. v1 firmware does not decode these addresses as cached reads (see the `cache_hit` expression in `phase0/cpld/netisa.v`), so the ESP32 remains the sole arbiter of their semantics across firmware versions. No CPLD changes are required to introduce NIC Mode or NIC + kTLS Mode in future firmware releases — the hardware shipped in v1 is forward-compatible with all three modes by design.
+This allocation is a contract for v2+ firmware. v1 firmware does not decode these addresses as cached reads (see the `cache_hit` expression in `phase0/cpld/netisa.v`), so the ESP32 remains the sole arbiter of their semantics across firmware versions. No CPLD changes are required to introduce NIC Mode or NIC + kTLS Mode in future firmware releases; the hardware shipped in v1 is forward-compatible with all three modes by design.
 
 ### 2.7 Data Flow Model
 
@@ -1204,7 +1204,7 @@ This design allows full-speed REP INSB/OUTSB bulk transfers with a single status
 **Cached registers (zero wait-state reads, v1):**
 - 0x00: Status Register only (with hardware flag merge for bits 3, 5, 6)
 
-All other reads go through the cache-miss path with IOCHRDY wait states. This is the "status-only cache" decision documented in Section 5.4.6 — the status register is polled in tight loops by the bulk transfer error detection protocol and must be read with zero wait states, while other registers are accessed infrequently enough that IOCHRDY wait states on each read are acceptable.
+All other reads go through the cache-miss path with IOCHRDY wait states. This is the "status-only cache" decision documented in Section 5.4.6: the status register is polled in tight loops by the bulk transfer error detection protocol and must be read with zero wait states, while other registers are accessed infrequently enough that IOCHRDY wait states on each read are acceptable.
 
 Status register cache updates from the ESP32 (for bits 0-2 CMD_READY, RESP_READY, ASYNC_DATA) go through a dedicated cache-push protocol described in Section 5.4.6. Hardware flags (bits 3, 5, 6) are merged at read time from CPLD-local signals and do not require firmware intervention.
 
@@ -1337,13 +1337,13 @@ Combinational full 16-bit I/O decode:
 
 - **A15-A10 must all be LOW** (upper-zero gate). All configured base addresses are below 0x400, so any access with any upper-address bit set is not ours. This prevents aliasing at every 1 KB boundary, which on AT+ systems would collide with AWE32 EMU8000 (0x620 / 0xA20 / 0xE20), ECP parallel (0x778), and any other device with A10 or higher asserted.
 - **A9-A4 match the jumper-selected base** (6-bit equality compare; see Section 2.3.1 for the pattern table).
-- **A3-A0 select the register within the 16-port window.** A3 must NOT be included in `chip_sel` — if it were, registers 0x08-0x0F would be inaccessible.
+- **A3-A0 select the register within the 16-port window.** A3 must NOT be included in `chip_sel`. If it were, registers 0x08-0x0F would be inaccessible.
 
 Implementation: `chip_sel = base_match & AEN & upper_zero`, where `upper_zero = ~(A10 | A11 | A12 | A13 | A14 | A15)`. The upper-zero gate adds one macrocell to the fit; verified 95/128 on EPM7128STC100-15 with Quartus II 13.0sp1.
 
 #### 5.4.6 Register Cache Strategy
 
-**v1 design: only the Status Register (0x00) is cached in the CPLD.** All other reads — including reg 0x06 Error Code, 0x07-0x09 Firmware Version, 0x0A Session Count, 0x0B Session Capacity, and 0x0C Network Status — resolve through the cache-miss path (IOCHRDY wait state → PSTROBE → ESP32 responds → isa_out_latch update → IOCHRDY release).
+**v1 design: only the Status Register (0x00) is cached in the CPLD.** All other reads, including reg 0x06 Error Code, 0x07-0x09 Firmware Version, 0x0A Session Count, 0x0B Session Capacity, and 0x0C Network Status, resolve through the cache-miss path (IOCHRDY wait state -> PSTROBE -> ESP32 responds -> isa_out_latch update -> IOCHRDY release).
 
 **Cached (zero wait-state reads, 1 of 16 registers):**
 - 0x00 Status Register, with hardware flag merging for bits 3 (SAFE_MODE), 5 (XFER_TIMEOUT), and 6 (BOOT_COMPLETE)
@@ -1367,11 +1367,11 @@ Earlier drafts of this spec proposed caching 8 of 16 registers (status, error, v
 The **status-register-only cache** is the clean middle ground:
 
 1. **The bulk transfer error detection protocol (Section 5.3.5) requires fast polling of Status Register bit 5 (XFER_TIMEOUT) after every REP INSB block.** Making the status register a cache miss would require an IOCHRDY wait state on every block-boundary check, adding ~1-5 µs of latency per block transfer on an 8088. Status caching preserves the throughput story.
-2. **Every other register is accessed infrequently** — firmware version is polled once at TSR install, error code is only read on failure, session counts are queried periodically by diagnostics. IOCHRDY wait states on these reads add microseconds per call but do not impact steady-state throughput.
-3. **Hardware flag merging for bits 3, 5, 6 must live in the CPLD regardless.** Those bits come from SAFE_MODE (J3 jumper), XFER_TIMEOUT (CPLD watchdog), and PBOOT (synchronized ESP32 pin) — all CPLD-local signals that the ESP32 cannot push via any parallel-bus protocol. The status cache is the natural place to combine these with the ESP32-pushed bits 0-2.
+2. **Every other register is accessed infrequently.** Firmware version is polled once at TSR install, error code is only read on failure, session counts are queried periodically by diagnostics. IOCHRDY wait states on these reads add microseconds per call but do not impact steady-state throughput.
+3. **Hardware flag merging for bits 3, 5, 6 must live in the CPLD regardless.** Those bits come from SAFE_MODE (J3 jumper), XFER_TIMEOUT (CPLD watchdog), and PBOOT (synchronized ESP32 pin), all CPLD-local signals that the ESP32 cannot push via any parallel-bus protocol. The status cache is the natural place to combine these with the ESP32-pushed bits 0-2.
 4. **Macrocell budget:** one 8-bit cache latch for the status register fits easily within the existing design (~8 FFs plus a small write decoder), with room to spare for the cache-push protocol.
 
-**v1 cache-push protocol (TBD — design before v1 firmware development):**
+**v1 cache-push protocol (TBD; design before v1 firmware development):**
 
 The ESP32 must have a way to update the status register cache latch when CMD_READY, RESP_READY, or ASYNC_DATA (status bits 0-2) change. Candidate mechanisms:
 
@@ -1906,7 +1906,7 @@ Uses **NIC Mode** via a kernel-mode NDIS miniport (v2.0+). Same approach as Win9
 
 ### 7.5 Linux
 
-Uses **NIC Mode** via a `net_device` kernel driver layered on the `isa_driver` framework (v2.0+). Once the card appears as a standard Linux network interface, every userspace socket works — no userspace library, no LD_PRELOAD shim, no custom API.
+Uses **NIC Mode** via a `net_device` kernel driver layered on the `isa_driver` framework (v2.0+). Once the card appears as a standard Linux network interface, every userspace socket works: no userspace library, no LD_PRELOAD shim, no custom API.
 
 **kTLS integration (v2.5+):** Linux's kernel TLS subsystem (`kTLS`, mainline since 4.13) is an exact architectural fit for NetISA. Userspace does the TLS handshake via OpenSSL or equivalent, then pushes session keys into the kernel, which hands them to a kTLS-capable NIC for in-line AES-GCM record framing. Mellanox, Chelsio, and Intel ship datacenter NICs that do this. NetISA can do the same thing on a 486 running Linux: the kernel handles TCP/IP and the one-shot handshake, and the card handles per-packet crypto. This is the project's headline performance story for Linux hosts.
 
@@ -2347,7 +2347,7 @@ This means the card is unbrickable via normal MicroSD firmware updates. The only
 
 ### v2.0: Windows, Linux, UDP, and Ecosystem
 
-- **NIC Mode firmware** (Section 2.6.1, Mode 1): card exposes a raw Ethernet packet interface so host operating systems can run their own TCP/IP stacks. No hardware changes — pure ESP32 firmware addition.
+- **NIC Mode firmware** (Section 2.6.1, Mode 1): card exposes a raw Ethernet packet interface so host operating systems can run their own TCP/IP stacks. No hardware changes; pure ESP32 firmware addition.
 - **Windows 95/98 NDIS 3.1/4.0 miniport driver** using NIC Mode. Card appears as a standard Ethernet adapter to Winsock.
 - **Windows 95/98 Winsock LSP (optional)** that transparently routes TLS port connections through the card's session-mode TLS engine, enabling Netscape Navigator 4 / IE3 / IE4 to reach TLS 1.3-only sites.
 - **Windows NT 3.51 / 4.0 NDIS miniport** (kernel-mode) using NIC Mode.
@@ -2368,7 +2368,7 @@ This means the card is unbrickable via normal MicroSD firmware updates. The only
 
 - **NIC + kTLS Offload Mode firmware** (Section 2.6.1, Mode 2): card performs in-line AES-GCM / ChaCha20-Poly1305 record framing on host-OS-negotiated TLS sessions, matching the architecture used by Mellanox / Chelsio / Intel kTLS-capable datacenter NICs. Purely a firmware release; same hardware.
 - **Linux kTLS integration** in the NIC Mode driver, exposing the card as a kTLS offload target to the mainline kernel TLS subsystem. A 486 running Linux reads and writes TLS sessions at the speed of the wire, not the speed of software AES.
-- **FreeBSD 13+ kTLS integration** — same approach as Linux, leveraging FreeBSD's native kTLS support.
+- **FreeBSD 13+ kTLS integration**: same approach as Linux, leveraging FreeBSD's native kTLS support.
 - DTLS (UDP-based TLS)
 - Bluetooth (ESP32-S3 has BLE)
 - Additional cipher suites as needed
@@ -2406,7 +2406,7 @@ This is the highest-risk phase. If the bus interface doesn't work reliably acros
 
 **Phase 0 CPLD simplifications (deferred to v1):**
 
-The Phase 0 `netisa.v` implements a single `isa_out_latch` that serves both the status-register cached-read path (with hardware flag merging for bits 3/5/6) and the non-cached register cache-miss path. This is sufficient for Phase 0 loopback validation but is **not** the v1 production cache architecture — see Section 5.4.6 for the full status-only-cache design decision and the ESP32→CPLD cache-push protocol options. The v1 Verilog rework separating the status cache latch from the non-cached-read latch, plus the firmware cache-push implementation, begins after Phase 0 hardware validation passes on all three target machine classes.
+The Phase 0 `netisa.v` implements a single `isa_out_latch` that serves both the status-register cached-read path (with hardware flag merging for bits 3/5/6) and the non-cached register cache-miss path. This is sufficient for Phase 0 loopback validation but is **not** the v1 production cache architecture. See Section 5.4.6 for the full status-only-cache design decision and the ESP32->CPLD cache-push protocol options. The v1 Verilog rework separating the status cache latch from the non-cached-read latch, plus the firmware cache-push implementation, begins after Phase 0 hardware validation passes on all three target machine classes.
 
 **Additional Phase 0 pre-silicon validation already completed:**
 - Verilog testbench: 160/160 tests passing (iverilog), covering address decode (including full 16-bit alias rejection), IOCHRDY wait states and watchdog, IRQ state machine retrigger, back-to-back cycles, mid-cycle reset, status flag merge combinations, reserved-register pass-through, and more.
