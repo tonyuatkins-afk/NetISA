@@ -1,13 +1,19 @@
-# dos/Makefile - Build all DOS software for NetISA
+# dos/Makefile - Build the NetISA TSR + launcher + remaining DOS apps.
+#
+# CATHODE has migrated to ../cathode/ (suite-app pattern). This Makefile
+# now only covers tsr, launcher, discord, and claude. Run wmake from
+# ../cathode/ to build the browser.
 #
 # Requires: OpenWatcom 2.0 (C:\WATCOM), NASM
 # Usage:    wmake -f Makefile [target]
 #
 # Targets:
-#   all       - Build everything
+#   all       - Build everything (tsr + launcher + discord + claude)
 #   tsr       - Build NETISA.COM (TSR)
 #   launcher  - Build NETISA.EXE (launcher with stubs)
-#   launcher_hw - Build NETISA.EXE (launcher with real INT 63h)
+#   launcher_hw - Build NETISA_HW.EXE (launcher with real INT 63h)
+#   discord   - Build DISCORD.EXE
+#   claude    - Build CLAUDE.EXE
 #   clean     - Remove build artifacts
 
 # Tools (full paths for build reliability)
@@ -33,13 +39,6 @@ LIB_REAL   = lib\netisa.obj
 
 LAUNCHER_OBJS = launcher\main.obj launcher\menu.obj launcher\wifi.obj launcher\status.obj
 
-CATHODE_OBJS = cathode\main.obj cathode\browser.obj cathode\render.obj &
-	cathode\input.obj cathode\page.obj cathode\urlbar.obj cathode\stub_pages.obj &
-	cathode\utf8.obj cathode\url.obj cathode\htmltok.obj cathode\htmlout.obj &
-	cathode\fetch.obj cathode\search.obj cathode\bookmark.obj
-
-CATHODE_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=cathode
-
 DISCORD_OBJS = discord\main.obj discord\discord.obj discord\render_dc.obj &
 	discord\input_dc.obj discord\stub_discord.obj discord\audio_dc.obj &
 	discord\config_dc.obj discord\search_dc.obj
@@ -51,13 +50,11 @@ CLAUDE_OBJS = claude\main.obj claude\claude.obj claude\chat.obj &
 
 CLAUDE_CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib -i=claude
 
-all: tsr launcher cathode discord claude .SYMBOLIC
+all: tsr launcher discord claude .SYMBOLIC
 
 tsr: netisa.com .SYMBOLIC
 
 launcher: netisa.exe .SYMBOLIC
-
-cathode: cathode.exe .SYMBOLIC
 
 discord: discord.exe .SYMBOLIC
 
@@ -117,68 +114,7 @@ launcher\wifi.obj: launcher\wifi.c lib\screen.h lib\netisa.h
 launcher\status.obj: launcher\status.c lib\screen.h lib\netisa.h
 	$(CC) $(CFLAGS) -fo=launcher\status.obj launcher\status.c
 
-# Cathode browser
-cathode.exe: $(CATHODE_OBJS) $(LIB_SCREEN) $(LIB_STUB)
-	$(LINKER) format dos libpath C:\WATCOM\lib286 libpath C:\WATCOM\lib286\dos name cathode.exe &
-		file cathode\main.obj &
-		file cathode\browser.obj &
-		file cathode\render.obj &
-		file cathode\input.obj &
-		file cathode\page.obj &
-		file cathode\urlbar.obj &
-		file cathode\stub_pages.obj &
-		file cathode\utf8.obj &
-		file cathode\url.obj &
-		file cathode\htmltok.obj &
-		file cathode\htmlout.obj &
-		file cathode\fetch.obj &
-		file cathode\search.obj &
-		file cathode\bookmark.obj &
-		file lib\screen.obj &
-		file lib\netisa_stub.obj &
-		option quiet
-
-cathode\main.obj: cathode\main.c cathode\browser.h cathode\render.h cathode\input.h lib\screen.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\main.obj cathode\main.c
-
-cathode\browser.obj: cathode\browser.c cathode\browser.h cathode\stub_pages.h cathode\htmltok.h cathode\fetch.h cathode\bookmark.h lib\screen.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\browser.obj cathode\browser.c
-
-cathode\render.obj: cathode\render.c cathode\render.h cathode\search.h cathode\page.h lib\screen.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\render.obj cathode\render.c
-
-cathode\input.obj: cathode\input.c cathode\input.h cathode\browser.h cathode\bookmark.h lib\screen.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\input.obj cathode\input.c
-
-cathode\page.obj: cathode\page.c cathode\page.h lib\screen.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\page.obj cathode\page.c
-
-cathode\urlbar.obj: cathode\urlbar.c cathode\urlbar.h cathode\input.h lib\screen.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\urlbar.obj cathode\urlbar.c
-
-cathode\stub_pages.obj: cathode\stub_pages.c cathode\stub_pages.h cathode\render.h cathode\page.h lib\screen.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\stub_pages.obj cathode\stub_pages.c
-
-cathode\utf8.obj: cathode\utf8.c cathode\utf8.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\utf8.obj cathode\utf8.c
-
-cathode\url.obj: cathode\url.c cathode\url.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\url.obj cathode\url.c
-
-cathode\htmltok.obj: cathode\htmltok.c cathode\htmltok.h cathode\htmlout.h cathode\utf8.h cathode\page.h lib\screen.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\htmltok.obj cathode\htmltok.c
-
-cathode\htmlout.obj: cathode\htmlout.c cathode\htmlout.h cathode\htmltok.h cathode\render.h cathode\url.h cathode\page.h lib\screen.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\htmlout.obj cathode\htmlout.c
-
-cathode\fetch.obj: cathode\fetch.c cathode\fetch.h cathode\stub_pages.h cathode\url.h lib\screen.h lib\netisa.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\fetch.obj cathode\fetch.c
-
-cathode\search.obj: cathode\search.c cathode\search.h cathode\page.h lib\screen.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\search.obj cathode\search.c
-
-cathode\bookmark.obj: cathode\bookmark.c cathode\bookmark.h cathode\url.h
-	$(CC) $(CATHODE_CFLAGS) -fo=cathode\bookmark.obj cathode\bookmark.c
+# CATHODE has migrated to ../cathode/. Run wmake from there.
 
 # Discord client
 discord.exe: $(DISCORD_OBJS) $(LIB_SCREEN)
@@ -255,13 +191,11 @@ claude\stub_claude.obj: claude\stub_claude.c claude\claude.h lib\screen.h
 clean: .SYMBOLIC
 	-del lib\*.obj
 	-del launcher\*.obj
-	-del cathode\*.obj
 	-del discord\*.obj
 	-del claude\*.obj
 	-del netisa.com
 	-del netisa.exe
 	-del netisa_hw.exe
-	-del cathode.exe
 	-del discord.exe
 	-del claude.exe
 	-del *.err

@@ -1,0 +1,16 @@
+# Build artifacts
+*.obj
+*.o32
+*.EXE
+*.exe
+*.map
+*.err
+*.sym
+*.LOG
+*.log
+build/
+
+# Editor backups
+*~
+*.bak
+*.swp
