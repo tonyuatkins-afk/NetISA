@@ -1,0 +1,21 @@
+# Build artifacts
+*.obj
+*.o32
+*.EXE
+*.exe
+*.map
+*.err
+*.sym
+*.LOG
+*.log
+
+# Config files (user-specific)
+HEARO.CFG
+HEARO.HAL
+HEARO.STA
+HEARO.PRF
+
+# Editor backups
+*~
+*.bak
+*.swp

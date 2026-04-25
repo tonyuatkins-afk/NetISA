@@ -230,3 +230,23 @@ Some of the design decisions will probably turn out to be wrong.
 Some parts will almost definitely need to be reworked once real hardware is involved.
 
 That’s fine. That’s kind of the point.
+
+---
+
+## Software Suite
+
+NetISA ships with a suite of DOS applications that leverage the card's networking capabilities:
+
+| App | Description | Status |
+|-----|-------------|--------|
+| HEARO | Music player with hardware recognition | Foundation in progress |
+| CATHODE | Web browser | Planned |
+| DISCORD | Chat client | Planned |
+| CLAUDE | LLM client | Planned |
+| COURIER | Email client | Planned |
+| CRATE | Cloud filesystem | Planned |
+| KIOSK | Package manager | Planned |
+| CHIME | Time sync | Planned |
+| RADIO | Lightweight streaming (XT-class) | Planned |
+
+See [hearo/README.md](hearo/README.md) for the first application in development.

@@ -1,0 +1,68 @@
+# scripts/screenshot.ps1 - Capture HEARO boot screen as PNG.
+#
+# Pipeline:
+#   1. Verify HEARO.EXE exists in the hearo/ directory.
+#   2. Launch DOSBox-X with screenshot.conf (autoexec runs HEARO.EXE).
+#   3. Wait for the boot screen to render.
+#   4. Drive the existing capture.ps1 toolkit to grab the client area.
+#   5. Send a keypress to dismiss the boot screen, then close DOSBox-X.
+#
+# The boot screen blocks on INT 16h AH=00h, so DOSBox-X stays at the
+# celebration page indefinitely. We capture during that wait window.
+#
+# Usage:
+#   ./screenshot.ps1
+#   ./screenshot.ps1 -OutFile ../../Screenshots/hearo_boot_486.png -BootDelay 8
+#   ./screenshot.ps1 -Conf ./screenshot-mda.conf -Tag minimum
+
+param(
+    [string]$Conf       = "$PSScriptRoot\screenshot.conf",
+    [string]$OutFile    = "$PSScriptRoot\..\..\Screenshots\hearo_boot.png",
+    [int]   $BootDelay  = 6,
+    [string]$Tag        = "",
+    [string]$DosboxExe  = "C:\Users\tonyu\AppData\Local\Microsoft\WinGet\Packages\joncampbell123.DOSBox-X_Microsoft.Winget.Source_8wekyb3d8bbwe\bin\x64\Release SDL2\dosbox-x.exe",
+    [string]$Capture    = "C:\Development\Screenshots\capture.ps1"
+)
+
+$ErrorActionPreference = 'Stop'
+
+$hearoDir = Resolve-Path "$PSScriptRoot\.."
+$hearoExe = Join-Path $hearoDir "HEARO.EXE"
+if (-not (Test-Path $hearoExe)) {
+    Write-Error "HEARO.EXE not found at $hearoExe. Run wmake in $hearoDir first."
+    exit 1
+}
+if (-not (Test-Path $Conf))      { Write-Error "Config not found: $Conf"; exit 1 }
+if (-not (Test-Path $DosboxExe)) { Write-Error "DOSBox-X not found at $DosboxExe"; exit 1 }
+if (-not (Test-Path $Capture))   { Write-Error "capture.ps1 not found at $Capture"; exit 1 }
+
+# Apply optional tag to output filename: hearo_boot.png + tag => hearo_boot_<tag>.png
+if ($Tag) {
+    $dir  = Split-Path $OutFile
+    $name = [System.IO.Path]::GetFileNameWithoutExtension($OutFile)
+    $ext  = [System.IO.Path]::GetExtension($OutFile)
+    $OutFile = Join-Path $dir "$name`_$Tag$ext"
+}
+$outDir = Split-Path $OutFile
+if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
+
+Write-Host "Launching DOSBox-X with $Conf"
+$proc = Start-Process -PassThru $DosboxExe -ArgumentList @("-conf", $Conf, "-nopromptfolder")
+
+try {
+    Write-Host "Waiting $BootDelay s for boot screen to render"
+    Start-Sleep -Seconds $BootDelay
+
+    Write-Host "Capturing to $OutFile"
+    & $Capture -OutFile $OutFile -Delay 0
+
+    if (Test-Path $OutFile) {
+        $size = (Get-Item $OutFile).Length
+        Write-Host "Saved $OutFile ($size bytes)"
+    } else {
+        Write-Warning "Capture produced no output file."
+    }
+} finally {
+    Write-Host "Closing DOSBox-X (PID $($proc.Id))"
+    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+}
