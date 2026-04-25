@@ -31,7 +31,7 @@ int main(void)
             a = -((s32)(rand() % 30000) + 1);
             b = (s32)(rand() % 30000) + 1;
         }
-        naive += (s32)((s64)a * (s64)b);
+        naive += a * b;  /* deliberate s32 overflow: that is what the quire fixes */
         quire_mac(&q, a, b);
     }
     {

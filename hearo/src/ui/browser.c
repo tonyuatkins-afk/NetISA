@@ -74,43 +74,6 @@ static void copy_entry(u8 idx, const char *name, hbool is_dir, const char *durat
     }
 }
 
-#ifdef HEARO_NOASM
-
-/* Host build: synthetic listing so the UI runs without DOS. */
-static void load_directory(void)
-{
-    entry_count = 0;
-    strcpy(current_dir, "D:\\MUSIC\\MODS");
-    copy_entry(entry_count++, "..",            HTRUE,  0);
-    copy_entry(entry_count++, "AXELF.MOD",     HFALSE, "4:22");
-    copy_entry(entry_count++, "CATSTEP.S3M",   HFALSE, "3:15");
-    copy_entry(entry_count++, "CREAM.XM",      HFALSE, "5:44");
-    copy_entry(entry_count++, "ENIGMA.MOD",    HFALSE, "6:01");
-    copy_entry(entry_count++, "POPCORN.MOD",   HFALSE, "2:48");
-    copy_entry(entry_count++, "STARDUST.IT",   HFALSE, "8:30");
-    copy_entry(entry_count++, "GENESIS.MID",   HFALSE, "5:11");
-    copy_entry(entry_count++, "DOOM_E1M1.MID", HFALSE, "1:42");
-    copy_entry(entry_count++, "PROZAC.S3M",    HFALSE, "3:50");
-}
-
-static int change_directory(const char *path)
-{
-    /* No-op on host; just pretend it worked. */
-    if (!path) return 0;
-    if (strcmp(path, "..") == 0) {
-        char *bs = strrchr(current_dir, '\\');
-        if (bs && bs != current_dir + 2) *bs = '\0';
-    } else {
-        if (strlen(current_dir) + strlen(path) + 2 < sizeof(current_dir)) {
-            if (current_dir[strlen(current_dir) - 1] != '\\') strcat(current_dir, "\\");
-            strcat(current_dir, path);
-        }
-    }
-    return 0;
-}
-
-#else
-
 #include <dos.h>
 #include <direct.h>
 
@@ -159,8 +122,6 @@ static int change_directory(const char *path)
     if (!path || !path[0]) return -1;
     return chdir(path);
 }
-
-#endif
 
 void browser_init(const char *start_dir)
 {

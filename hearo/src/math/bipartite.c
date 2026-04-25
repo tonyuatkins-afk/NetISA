@@ -21,7 +21,19 @@ extern const u16 bp_exp2_table[256];
 
 s16 bipartite_sin(u16 angle)
 {
-    return (s16)((s32)bp_sin_a[(u8)(angle >> 8)] + (s32)bp_sin_b[(u8)(angle & 0xFF)]);
+    /* Linear interpolation between adjacent coarse-table entries. The
+     * bp_sin_b residual table is kept around for symmetry with future
+     * implementations but not used here; a simple lerp gives ~9 bits at the
+     * cost of one multiply per call, which is acceptable for the spectrum
+     * visualizer's 16 to 32 bins per frame. */
+    u8  hi   = (u8)(angle >> 8);
+    u8  lo   = (u8)(angle & 0xFF);
+    s16 a    = bp_sin_a[hi];
+    s16 next = bp_sin_a[(u8)(hi + 1)];   /* wraps cleanly at 256 */
+    s32 lerp = (s32)a + (((s32)(next - a) * (s32)lo) >> 8);
+    if (lerp >  32767) lerp =  32767;
+    if (lerp < -32768) lerp = -32768;
+    return (s16)lerp;
 }
 
 s16 bipartite_cos(u16 angle)

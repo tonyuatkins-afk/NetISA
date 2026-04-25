@@ -16,7 +16,11 @@ ASM    = nasm
 # src/platform/probes.c (Watcom inline asm + INT 10h/12h/2Fh/33h/67h calls).
 # Default leaves the gate ON so the codebase can build clean before the
 # probes.c path has been validated on bench iron.
-CF16 = -2 -ml -os -wx -zq -i=src -dHEARO_NOASM
+#
+# -zc places const data items (including string literals) in the code segment
+# instead of DGROUP. With ~70 unlock rules + menu definitions + status output
+# format strings, DGROUP overruns 64K without it.
+CF16 = -2 -ml -os -wx -zq -zc -i=src -dHEARO_NOASM
 CF32 = -3r -mf -ox -wx -zq -i=src -dHEARO_NOASM
 
 SRC_DIR     = src
@@ -56,8 +60,9 @@ SRCS = &
     $(SRC_DIR)\platform\timer.c &
     $(SRC_DIR)\platform\probes.c
 
-OBJS = &
-    $(OBJ_DIR)\hearo.obj &
+# LIB_OBJS = everything except hearo.obj (which has main()). Test programs link
+# their own main with LIB_OBJS; HEARO.EXE adds hearo.obj on top.
+LIB_OBJS = &
     $(OBJ_DIR)\detect.obj &
     $(OBJ_DIR)\cpu.obj &
     $(OBJ_DIR)\fpu.obj &
@@ -96,8 +101,8 @@ OBJS = &
 # Default
 all: HEARO.EXE tests .SYMBOLIC
 
-HEARO.EXE: $(OBJS)
-    $(LINK) system dos option map=hearo.map name HEARO file { $(OBJS) }
+HEARO.EXE: $(OBJ_DIR)\hearo.obj $(LIB_OBJS)
+    $(LINK) system dos option map=hearo.map name HEARO file { $(OBJ_DIR)\hearo.obj $(LIB_OBJS) }
 
 xm: HEAROXM.EXE .SYMBOLIC
 
@@ -142,13 +147,13 @@ $(OBJ_DIR)\probes.obj:       $(SRC_DIR)\platform\probes.c   ;  $(CC16) $(CF16) $
 # Test programs
 tests: TESTDET.EXE TESTBOOT.EXE TESTCORD.EXE TESTQUIR.EXE TESTBIP.EXE TESTUI.EXE .SYMBOLIC
 
-TESTDET.EXE: test\testdet.c $(OBJS)
+TESTDET.EXE: test\testdet.c $(LIB_OBJS)
     $(CC16) $(CF16) test\testdet.c -fo=$(OBJ_DIR)\testdet.obj
-    $(LINK) system dos name TESTDET file { $(OBJ_DIR)\testdet.obj $(OBJS) }
+    $(LINK) system dos name TESTDET file { $(OBJ_DIR)\testdet.obj $(LIB_OBJS) }
 
-TESTBOOT.EXE: test\testboot.c $(OBJS)
+TESTBOOT.EXE: test\testboot.c $(LIB_OBJS)
     $(CC16) $(CF16) test\testboot.c -fo=$(OBJ_DIR)\testboot.obj
-    $(LINK) system dos name TESTBOOT file { $(OBJ_DIR)\testboot.obj $(OBJS) }
+    $(LINK) system dos name TESTBOOT file { $(OBJ_DIR)\testboot.obj $(LIB_OBJS) }
 
 TESTCORD.EXE: test\testcord.c $(OBJ_DIR)\cordic.obj
     $(CC16) $(CF16) test\testcord.c -fo=$(OBJ_DIR)\testcord.obj
@@ -162,9 +167,9 @@ TESTBIP.EXE: test\testbip.c $(OBJ_DIR)\bipartite.obj $(OBJ_DIR)\tables.obj
     $(CC16) $(CF16) test\testbip.c -fo=$(OBJ_DIR)\testbip.obj
     $(LINK) system dos name TESTBIP file { $(OBJ_DIR)\testbip.obj $(OBJ_DIR)\bipartite.obj $(OBJ_DIR)\tables.obj }
 
-TESTUI.EXE: test\testui.c $(OBJS)
+TESTUI.EXE: test\testui.c $(LIB_OBJS)
     $(CC16) $(CF16) test\testui.c -fo=$(OBJ_DIR)\testui.obj
-    $(LINK) system dos name TESTUI file { $(OBJ_DIR)\testui.obj $(OBJS) }
+    $(LINK) system dos name TESTUI file { $(OBJ_DIR)\testui.obj $(LIB_OBJS) }
 
 clean: .SYMBOLIC
     @if exist $(OBJ_DIR)\*.obj del /q $(OBJ_DIR)\*.obj

@@ -16,11 +16,7 @@
 #include <string.h>
 #include <stdio.h>
 
-extern void dos_get_date(char *out11);
-
-#ifdef HEARO_NOASM
-void dos_get_date(char *o) { strcpy(o, "2026-04-24"); }
-#endif
+#include "../platform/dos.h"
 
 u32 detect_fingerprint(const hw_profile_t *hw)
 {

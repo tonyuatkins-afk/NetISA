@@ -18,8 +18,9 @@ SRC_DIR   = src
 OBJ_DIR   = build
 OBJ32_DIR = build32
 
-OBJS = &
-    $(OBJ_DIR)\chime.obj &
+# LIB_OBJS = everything except chime.obj (which has main()). Tests link their
+# own main with LIB_OBJS; CHIME.EXE adds chime.obj on top.
+LIB_OBJS = &
     $(OBJ_DIR)\cmdline.obj &
     $(OBJ_DIR)\config.obj &
     $(OBJ_DIR)\netisa_api.obj &
@@ -33,8 +34,8 @@ OBJS = &
 
 all: CHIME.EXE tests .SYMBOLIC
 
-CHIME.EXE: $(OBJS)
-    $(LINK) system dos option map=chime.map name CHIME file { $(OBJS) }
+CHIME.EXE: $(OBJ_DIR)\chime.obj $(LIB_OBJS)
+    $(LINK) system dos option map=chime.map name CHIME file { $(OBJ_DIR)\chime.obj $(LIB_OBJS) }
 
 xm: CHIMEXM.EXE .SYMBOLIC
 
@@ -52,9 +53,9 @@ $(OBJ_DIR)\ui_status.obj:   $(SRC_DIR)\ui_status.c   ; $(CC16) $(CF16) $< -fo=$@
 
 tests: TESTTIME.EXE .SYMBOLIC
 
-TESTTIME.EXE: test\testtime.c $(OBJS)
+TESTTIME.EXE: test\testtime.c $(LIB_OBJS)
     $(CC16) $(CF16) test\testtime.c -fo=$(OBJ_DIR)\testtime.obj
-    $(LINK) system dos name TESTTIME file { $(OBJ_DIR)\testtime.obj $(OBJS) }
+    $(LINK) system dos name TESTTIME file { $(OBJ_DIR)\testtime.obj $(LIB_OBJS) }
 
 clean: .SYMBOLIC
     @if exist $(OBJ_DIR)\*.obj del /q $(OBJ_DIR)\*.obj

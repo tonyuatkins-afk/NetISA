@@ -8,48 +8,19 @@
  *   AH=2Ch   get time  -> CH=hour, CL=minute, DH=second, DL=hundredths
  *   AH=2Dh   set time  <- CH=hour, CL=minute, DH=second, DL=hundredths
  *
- * On most modern DOS clones (MS-DOS 5+, FreeDOS), AH=2Bh/2Dh propagate to
- * the CMOS RTC. On some older systems (DOS 3.3, OEM 4.x), the DOS layer
- * advances a soft clock and never touches the RTC, so a reboot loses the
- * change. CHIME does a direct CMOS write after the INT 21h call as a
- * backstop.
+ * On modern DOS (MS-DOS 5+, FreeDOS), AH=2Bh/2Dh propagate to the CMOS RTC.
+ * On older DOS (3.3, OEM 4.x), the DOS layer advances a soft clock and
+ * never touches the RTC, so a reboot loses the change. CHIME does a direct
+ * CMOS write after the INT 21h call as a backstop.
  *
  * The CMOS path uses I/O ports 0x70 (index) and 0x71 (data). The RTC stores
- * BCD-encoded values in registers 0x00..0x09. Bit 2 of register 0x0B
- * indicates binary mode; we honour whichever encoding is set.
+ * BCD-encoded values in registers 0x00..0x09.
  */
 #include "dos_clock.h"
 #include <stdio.h>
-
-#ifdef HEARO_NOASM
-#include <time.h>
-void dos_clock_get(chime_time_t *out)
-{
-    time_t t = time(0);
-    struct tm *lt = gmtime(&t);
-    if (!out) return;
-    out->year   = (u16)(lt->tm_year + 1900);
-    out->month  = (u8)(lt->tm_mon + 1);
-    out->day    = (u8)lt->tm_mday;
-    out->hour   = (u8)lt->tm_hour;
-    out->minute = (u8)lt->tm_min;
-    out->second = (u8)lt->tm_sec;
-    out->pad = 0;
-    out->unix_ts = (u32)t;
-}
-
-void dos_clock_set(const chime_time_t *t)
-{
-    /* Host build: print only. The host has no business writing the OS clock
-     * just because a CHIME smoke test ran. */
-    if (!t) return;
-    fprintf(stderr,
-            "[host build] would set DOS clock to %04u-%02u-%02u %02u:%02u:%02u UTC\n",
-            t->year, t->month, t->day, t->hour, t->minute, t->second);
-}
-#else
 #include <dos.h>
 #include <i86.h>
+#include <conio.h>
 
 void dos_clock_get(chime_time_t *out)
 {
@@ -85,7 +56,7 @@ static u8 to_bcd(u8 v)  { return (u8)(((v / 10) << 4) | (v % 10)); }
 
 static void cmos_set(const chime_time_t *t)
 {
-    /* Stop RTC updates while writing (Set bit in register B = 0x0B). */
+    /* Stop RTC updates while writing (set bit 7 of register B = 0x0B). */
     u8 reg_b = cmos_read(0x0B);
     cmos_write(0x0B, (u8)(reg_b | 0x80));
 
@@ -119,4 +90,3 @@ void dos_clock_set(const chime_time_t *t)
     intdos(&r, &r);
     cmos_set(t);
 }
-#endif

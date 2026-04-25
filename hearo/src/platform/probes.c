@@ -4,9 +4,9 @@
  *
  * This file replaces the per-module HEARO_NOASM C stubs when building for
  * actual DOS. Each function below is the production version of an `extern`
- * declared in src/detect/*.c. The file is wrapped in #ifndef HEARO_NOASM so
- * the host build (which keeps the synthetic stubs in detect/*.c) compiles
- * this to nothing.
+ * declared in detect/. The file is wrapped in #ifndef HEARO_NOASM so the
+ * host build (which keeps the synthetic stubs in detect/) compiles this to
+ * nothing.
  *
  * Layout:
  *   1. Audio: port I/O wrappers, ISA-bus delay, BIOS data area peeks.
@@ -18,7 +18,7 @@
  *   7. FPU: FNINIT/FNSTSW/FNSTCW plus IIT and Cyrix port probes.
  *
  * Watcom-specific bits (#pragma aux, __far, MK_FP, int86) are all here. The
- * detect/*.c modules stay plain C and remain portable.
+ * detect modules stay plain C and remain portable.
  */
 #ifndef HEARO_NOASM
 

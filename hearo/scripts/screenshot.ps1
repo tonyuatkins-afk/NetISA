@@ -17,7 +17,7 @@
 
 param(
     [string]$Conf       = "$PSScriptRoot\screenshot.conf",
-    [string]$OutFile    = "$PSScriptRoot\..\..\Screenshots\hearo_boot.png",
+    [string]$OutFile    = "C:\Development\Screenshots\hearo_boot.png",
     [int]   $BootDelay  = 6,
     [string]$Tag        = "",
     [string]$DosboxExe  = "C:\Users\tonyu\AppData\Local\Microsoft\WinGet\Packages\joncampbell123.DOSBox-X_Microsoft.Winget.Source_8wekyb3d8bbwe\bin\x64\Release SDL2\dosbox-x.exe",
@@ -47,7 +47,7 @@ $outDir = Split-Path $OutFile
 if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
 
 Write-Host "Launching DOSBox-X with $Conf"
-$proc = Start-Process -PassThru $DosboxExe -ArgumentList @("-conf", $Conf, "-nopromptfolder")
+$proc = Start-Process -PassThru $DosboxExe -ArgumentList @("-conf", $Conf, "-nopromptfolder", "-fastlaunch")
 
 try {
     Write-Host "Waiting $BootDelay s for boot screen to render"

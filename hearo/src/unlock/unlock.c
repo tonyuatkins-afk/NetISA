@@ -17,7 +17,6 @@
 static hbool chk_always   (const hw_profile_t *h) { (void)h; return HTRUE; }
 static hbool chk_has_fpu  (const hw_profile_t *h) { return (h->fpu_type != FPU_NONE) ? HTRUE : HFALSE; }
 static hbool chk_no_fpu   (const hw_profile_t *h) { return (h->fpu_type == FPU_NONE) ? HTRUE : HFALSE; }
-static hbool chk_386plus  (const hw_profile_t *h) { return (h->cpu_class >= CPU_80386SX) ? HTRUE : HFALSE; }
 static hbool chk_486plus  (const hw_profile_t *h) { return (h->cpu_class >= CPU_80486SX) ? HTRUE : HFALSE; }
 static hbool chk_pentium  (const hw_profile_t *h) { return (h->cpu_class >= CPU_PENTIUM) ? HTRUE : HFALSE; }
 static hbool chk_fpu_xms  (const hw_profile_t *h) { return chk_has_fpu(h) && h->mem_xms_kb >= 256UL ? HTRUE : HFALSE; }
