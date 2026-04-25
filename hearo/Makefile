@@ -20,8 +20,8 @@ ASM    = nasm
 # -zc places const data items (including string literals) in the code segment
 # instead of DGROUP. With ~70 unlock rules + menu definitions + status output
 # format strings, DGROUP overruns 64K without it.
-CF16 = -2 -ml -os -wx -zq -zc -i=src -dHEARO_NOASM
-CF32 = -3r -mf -ox -wx -zq -i=src -dHEARO_NOASM
+CF16 = -2 -ml -os -wx -zq -zc -i=src
+CF32 = -3r -mf -ox -wx -zq -i=src
 
 SRC_DIR     = src
 OBJ_DIR     = build
