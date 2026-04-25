@@ -1,22 +1,22 @@
 # CHIME
 
-**One job, done correctly: ask the network what time it is, tell DOS.**
+Network time-sync tool for the [NetISA](../README.md) suite. Targets IBM PC compatibles 286+ on DOS 3.3+. Asks the network for the current time, sets the DOS clock.
 
-CHIME is the network time-sync tool of the [NetISA](../README.md) suite. Targets IBM PC compatibles 286+ on DOS 3.3+. v1.0 uses HTTPS `Date:` header parsing over the NetISA card's TLS session API. Real SNTP/UDP comes in v1.1 once NetISA exposes UDP datagrams.
+v1.0 uses HTTPS `HEAD` and parses the response `Date:` header. SNTP/UDP comes in v1.1 once NetISA exposes UDP datagrams.
 
 ## Status
 
-**Foundation in progress.** Design doc at `docs/chime-design.md`. Source tree scaffolded; compilation pending Open Watcom V2.
+Source tree complete; not compiled yet.
 
-## Key features (v1.0)
+## Features (v1.0)
 
 - HTTPS `HEAD` against time-anchor URLs (Cloudflare, Google, worldtimeapi).
 - HTTPS `GET` JSON fallback.
 - Plain HTTP `HEAD` diagnostic mode.
 - One-second precision (HTTP `Date:` header limit).
 - Confirmation prompt by default; `/AUTO` for batch use, `/DRYRUN` to test.
-- INT 21h date+time set, plus CMOS RTC write-through for systems where DOS does not propagate.
-- Timezone as fixed offset; DST is the user's problem.
+- INT 21h date+time set plus CMOS RTC write-through for systems where DOS does not propagate.
+- Timezone as fixed offset. DST not handled.
 - `/STUBNET` synthesises a present NetISA card so the program runs on a workstation without hardware.
 
 ## Requirements
@@ -32,9 +32,9 @@ Requires Open Watcom V2.
 
 ```
 cd chime
-wmake           # Build CHIME.EXE (16-bit, 286+)
-wmake xm        # Build CHIMEXM.EXE (32-bit, 386+)
-wmake tests     # Build test executables
+wmake           # CHIME.EXE   (16-bit, 286+)
+wmake xm        # CHIMEXM.EXE (32-bit, 386+)
+wmake tests     # test executables
 ```
 
 ## Usage
@@ -44,16 +44,16 @@ CHIME                       sync, prompt before writing
 CHIME /AUTO                 sync, write without prompt
 CHIME /DRYRUN               report only, never write
 CHIME /SERVER=time.google.com
-CHIME /TZ=-08:00            local time zone offset
+CHIME /TZ=-08:00            local timezone offset
 CHIME /MODE=https-head      force a specific time source
 CHIME /VERSION              print version, exit
 CHIME /HELP                 print this list, exit
 CHIME /STUBNET              synthesise NetISA presence (development)
 ```
 
-## Design Documents
+## Documents
 
-- [CHIME Design Document](../docs/chime-design.md)
+- [Design document](../docs/chime-design.md)
 
 ## License
 

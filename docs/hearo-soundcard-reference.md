@@ -1,40 +1,44 @@
 # HEARO Sound Card Reference
 
-**Companion document to:** `hearo-design.md`
-**Audience:** developers implementing `src/detect/audio.c` and the boot screen.
-**Goal:** a complete probe table for every period appropriate DOS audio device HEARO targets, with the exact register sequences, ports, expected responses, capability flags, boot screen lines, and unlocked features.
+**Companion document:** `hearo-design.md`
+**Audience:** developers working on `src/detect/audio.c` and the boot screen.
+**Scope:** probe protocol for every period-appropriate DOS audio device HEARO targets.
 
-This document is normative for the v1.0 detection engine. Each device section is structured the same way:
+Each device section covers:
 
-1. Identity and historical context
+1. Identity
 2. Detection method (environment first, then I/O probe)
-3. Port layout and probe sequence
+3. Ports and probe sequence
 4. Capabilities reported in `hw_profile_t`
-5. Boot screen line, deadpan
-6. Unlocks (referenced by `unlock_id_t`)
+5. Boot screen line
+6. Unlocks (`unlock_id_t` IDs)
 7. Known false positives and pitfalls
 
-A small number of devices share probe space (Covox vs Disney on LPT, AdLib vs AdLib Gold, SB16 vs AWE32 vs AWE64). The order of probing matters and is called out where relevant.
+Some devices share probe space (Covox vs Disney on LPT, AdLib vs AdLib Gold, SB16 vs AWE32 vs AWE64). Probe order matters and is called out where relevant.
 
 ---
 
-## 0. Probe Order Philosophy
+## 0. Probe order
 
-The detection engine probes devices in three rounds:
+Three rounds:
 
-1. **Always present.** PC Speaker exists. We do not probe; we list it.
-2. **Environment hinted.** `BLASTER`, `ULTRASND`, `MIDI`, `SOUND` strings tell us where to look. We confirm by I/O.
-3. **Blind probes.** Tandy port C0h, AdLib at 388h, MPU 330h, MPU 300h, LPT (Covox/Disney), Soundscape, PAS-16, ESS, Turtle Beach, AdLib Gold extensions.
+1. **Always present.** PC Speaker. No probe; list unconditionally.
+2. **Environment hinted.** `BLASTER`, `ULTRASND`, `MIDI`, `SOUND` strings point us at the right base. Confirm by I/O.
+3. **Blind probes.** Tandy port C0h, AdLib at 388h, MPU 330h/300h, LPT (Covox/Disney), SoundScape, PAS-16, ESS, Turtle Beach, AdLib Gold extensions.
 
-The reason for this order is to minimise destructive probes. A blind write to a port can hang machines that have nothing on it but happen to decode the address. Environment first keeps probes targeted.
+Environment first keeps probes targeted: a blind write to a port can hang machines that have nothing on it but happen to decode the address.
 
-For each device, when both environment and I/O agree, we report `detected`. When only I/O succeeds with no environment hint, we report `detected (probe)`. When environment claims a device but I/O fails, we report `not responding (BLASTER claims …)` and do not set the AUD flag.
+Reporting:
+
+- Environment + I/O agree: `detected`.
+- I/O only, no env hint: `detected (probe)`.
+- Env claims a device but I/O fails: `not responding (BLASTER claims ...)`, AUD flag not set.
 
 ---
 
 ## 1. PC Speaker
 
-**Identity.** The Programmable Interval Timer channel 2 driving the on board speaker. Universal on every IBM PC compatible from 1981. Treated as a first class HEARO output, not a fallback.
+**Identity.** Programmable Interval Timer channel 2 driving the on-board speaker. Universal on every IBM PC compatible from 1981.
 
 **Detection.** None required. `AUD_PCSPEAKER` is set unconditionally.
 
@@ -394,7 +398,7 @@ If steps 5 yields the expected pattern, an OPL chip is present. To distinguish O
 
 ## 14. Gravis UltraSound Classic
 
-**Identity.** Advanced Gravis UltraSound (1992), GF1 chip, 256KB to 1MB DRAM, no ADC. The community favourite.
+**Identity.** Advanced Gravis UltraSound (1992). GF1 chip, 256 KB to 1 MB DRAM, no ADC.
 
 **Detection.**
 
@@ -676,6 +680,6 @@ These are listed for completeness; HEARO does not target them in v1.0.
 
 ---
 
-## Notes on the Boot Screen
+## Boot screen format
 
-The boot screen quotes each card's marketing name without irony and without enthusiasm. PC Speaker is listed deadpan in the same column as GUS MAX. The specific configuration (port, IRQ, DMA, RAM) is shown on the indented line beneath. Each ENABLED entry is separately right justified in the status column. This is the recognition density principle in action: the user sees that we noticed, we record it, and we treat each device as the protagonist its owner believes it to be.
+Each card's marketing name on one line. Configuration details (port, IRQ, DMA, RAM) on the indented line beneath. ENABLED entries right-justified in the status column. PC Speaker is listed in the same column as GUS MAX.
