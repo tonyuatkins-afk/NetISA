@@ -6,9 +6,9 @@
 > Firmware, DOS stack, and apps are working in DOSBox-X. CPLD logic passes its testbench (160/160).  
 > Bench assembly starts next. Fully expecting at least one thing to go wrong immediately.
 
-> **https://barelybooting.com/** — build log, screenshots  
-> • https://www.youtube.com/@BarelyBooting — videos  
-> • https://barelybooting.com/log.html — build log + RSS
+> **https://barelybooting.com/**: project site, screenshots, status  
+> https://barelybooting.com/log.html: build log, RSS feed  
+> https://www.youtube.com/@BarelyBooting: build videos
 
 ---
 
@@ -24,9 +24,9 @@ So instead of forcing the host CPU to do that work, NetISA moves it somewhere el
 - An ESP32-S3 handles WiFi, TCP/IP, and TLS using its built-in crypto hardware
 - The DOS side talks to it through a small TSR like it’s just another device
 
-No serial bottlenecks, no second machine acting as a proxy, and no pretending a 4.77 MHz CPU wants to do RSA.
+The intent is to keep the host CPU out of the TLS path entirely: no serial bottleneck, no second machine acting as a proxy, no software TLS on the 4.77 MHz CPU.
 
-That’s the plan anyway. Hardware will probably have opinions.
+That's the design. Whether real hardware behaves the same way is the open question, and that's the next phase.
 
 ---
 
@@ -46,17 +46,11 @@ NetISA is basically me trying to answer that, probably the hard way.
 
 ---
 
-## What this project is (and isn’t)
+## Scope
 
-**What it is:**
-- A hardware + firmware approach to getting legacy PCs onto modern networks
-- A register-mapped coprocessor (v1), not a traditional NIC
-- A way to offload the parts of networking that old CPUs are really bad at
+NetISA is a register-mapped coprocessor for legacy PCs (not a traditional NIC). The hardware and firmware together offload the parts of networking that old CPUs handle badly: WiFi, TCP/IP, and TLS. The host CPU sees a small register interface and a TSR; it does not see packets.
 
-**What it is not:**
-- A way to turn a 486 into a modern PC
-- A fix for CPU-bound problems (rendering is still slow, always will be)
-- Finished hardware (not even close yet)
+The project does not turn a 486 into a modern PC. CPU-bound tasks like rendering or video decode are unaffected. And the hardware is not finished: parts are on the bench, assembly is the next phase.
 
 ---
 
@@ -235,18 +229,18 @@ That’s fine. That’s kind of the point.
 
 ## Software Suite
 
-NetISA ships with a suite of DOS applications that leverage the card's networking capabilities:
+The Barely Booting suite is a set of DOS applications that exercise the NetISA API. None of them ship as products; each is open source and currently runs against a stub backend in DOSBox-X. Hardware-backed runs come after bench bring-up.
 
 | App | Description | Status |
 |-----|-------------|--------|
-| HEARO | Music player with hardware recognition | v1.0 foundation |
-| CHIME | Time sync (HTTP Date header v1.0; SNTP/NTS in v1.1) | v1.0 foundation |
-| CATHODE | Web browser, sort of | v0.2, builds clean |
-| DISCORD | Chat client (v2 ground-up rebuild) | builds clean |
-| CLAUDE | Anthropic API client | builds clean |
+| HEARO | Music player with hardware recognition | v1.0.0 tagged 2026-04-25, software only |
+| CHIME | Time sync (HTTPS Date header v1.0; SNTP/NTS planned for v1.1) | v1.0.0 tagged 2026-04-25, software only |
+| CATHODE | Text-mode web browser | v0.2, builds clean against stub and hardware backends |
+| DISCORD | Chat client (v2 ground-up rebuild) | Builds clean, stub backend only so far |
+| CLAUDE | Anthropic API client | v0.1, builds clean, stub backend only so far |
 | COURIER | Email client | Planned |
 | CRATE | Cloud filesystem | Planned |
 | KIOSK | Package manager | Planned |
 | RADIO | Lightweight streaming (XT-class) | Planned |
 
-See [hearo/README.md](hearo/README.md) for the first application in development.
+See [hearo/README.md](hearo/README.md) for the first suite app to leave the design phase.
