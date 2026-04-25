@@ -4,7 +4,7 @@
  *
  * Two backends, switched at runtime:
  *   1. Real: thin INT 63h wrappers. Compiled when not HEARO_NOASM. Uses the
- *      same calling conventions as dos/lib/netisa.c so a future shared lib
+ *      same calling conventions as ../lib/netisa.c so a future shared lib
  *      can collapse the duplication.
  *   2. Stub: synthetic responses driven from a small playbook table.
  *      Activated via na_use_stub(CTRUE), normally driven from /STUBNET on the

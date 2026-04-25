@@ -2,7 +2,7 @@
  * netisa_api.h - CHIME's subset of the NetISA INT 63h API.
  * Copyright (c) 2026 Tony Atkins. MIT License.
  *
- * The full NetISA API lives in dos/lib/netisa.h. CHIME only uses a slice:
+ * The full NetISA API lives in lib/netisa.h at the repo root. CHIME only uses a slice:
  *   - presence check
  *   - card status (so we can show firmware version + IP)
  *   - TLS or plaintext session: open, send, receive, close

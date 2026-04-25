@@ -2,7 +2,10 @@
 #
 # CATHODE, DISCORD, and CLAUDE have all migrated to top-level suite-app
 # directories. Run wmake from ../cathode/, ../discord/, ../claude/.
-# This Makefile now only covers the TSR and the launcher.
+# This Makefile only covers the TSR and the launcher.
+#
+# Shared screen + netisa library lives at ../lib/. Object files land in
+# build/ to keep generated artifacts separate from source.
 #
 # Requires: OpenWatcom 2.0 (C:\WATCOM), NASM
 # Usage:    wmake -f Makefile [target]
@@ -20,10 +23,13 @@ LINKER = C:\WATCOM\binnt64\wlink
 LIB = C:\WATCOM\binnt64\wlib
 ASM = nasm
 
-# Compiler flags: 8088 target, small model, max optimization
-CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib
+SRC_LIB = ..\lib
+OBJ_DIR = build
 
-# Output directory
+# Compiler flags: 8088 target, small model, max optimization.
+# Include path picks up shared headers from ../lib and the launcher tree.
+CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=$(SRC_LIB) -i=launcher
+
 !ifdef __LOADDLL__
 !  loaddll wcc  wccd
 !  loaddll wlink wlinkd
@@ -31,11 +37,14 @@ CFLAGS = -0 -fpi -ms -s -ox -w4 -zq -bt=dos -i=lib
 !endif
 
 # Object files
-LIB_SCREEN = lib\screen.obj
-LIB_STUB   = lib\netisa_stub.obj
-LIB_REAL   = lib\netisa.obj
+LIB_SCREEN = $(OBJ_DIR)\screen.obj
+LIB_STUB   = $(OBJ_DIR)\netisa_stub.obj
+LIB_REAL   = $(OBJ_DIR)\netisa.obj
 
-LAUNCHER_OBJS = launcher\main.obj launcher\menu.obj launcher\wifi.obj launcher\status.obj
+LAUNCHER_OBJS = $(OBJ_DIR)\main.obj $(OBJ_DIR)\menu.obj $(OBJ_DIR)\wifi.obj $(OBJ_DIR)\status.obj
+
+.BEFORE
+    @if not exist $(OBJ_DIR) mkdir $(OBJ_DIR)
 
 all: tsr launcher .SYMBOLIC
 
@@ -52,58 +61,50 @@ netisa.com: tsr\netisa_tsr.asm
 # Launcher (stub version for DOSBox-X testing)
 netisa.exe: $(LAUNCHER_OBJS) $(LIB_SCREEN) $(LIB_STUB)
 	$(LINKER) system dos name netisa.exe &
-		file launcher\main.obj &
-		file launcher\menu.obj &
-		file launcher\wifi.obj &
-		file launcher\status.obj &
-		file lib\screen.obj &
-		file lib\netisa_stub.obj &
+		file $(OBJ_DIR)\main.obj &
+		file $(OBJ_DIR)\menu.obj &
+		file $(OBJ_DIR)\wifi.obj &
+		file $(OBJ_DIR)\status.obj &
+		file $(OBJ_DIR)\screen.obj &
+		file $(OBJ_DIR)\netisa_stub.obj &
 		option quiet
 
 # Launcher (real hardware version)
 netisa_hw.exe: $(LAUNCHER_OBJS) $(LIB_SCREEN) $(LIB_REAL)
 	$(LINKER) system dos name netisa_hw.exe &
-		file launcher\main.obj &
-		file launcher\menu.obj &
-		file launcher\wifi.obj &
-		file launcher\status.obj &
-		file lib\screen.obj &
-		file lib\netisa.obj &
+		file $(OBJ_DIR)\main.obj &
+		file $(OBJ_DIR)\menu.obj &
+		file $(OBJ_DIR)\wifi.obj &
+		file $(OBJ_DIR)\status.obj &
+		file $(OBJ_DIR)\screen.obj &
+		file $(OBJ_DIR)\netisa.obj &
 		option quiet
 
-# Pattern rules for C files
-.c.obj:
-	$(CC) $(CFLAGS) -fo=$^@ $<
+# Shared library objects compiled from ../lib
+$(OBJ_DIR)\screen.obj: $(SRC_LIB)\screen.c $(SRC_LIB)\screen.h
+	$(CC) $(CFLAGS) -fo=$@ $(SRC_LIB)\screen.c
 
-# Explicit rules for each C source
-lib\screen.obj: lib\screen.c lib\screen.h
-	$(CC) $(CFLAGS) -fo=lib\screen.obj lib\screen.c
+$(OBJ_DIR)\netisa_stub.obj: $(SRC_LIB)\netisa_stub.c $(SRC_LIB)\netisa.h
+	$(CC) $(CFLAGS) -fo=$@ $(SRC_LIB)\netisa_stub.c
 
-lib\netisa_stub.obj: lib\netisa_stub.c lib\netisa.h
-	$(CC) $(CFLAGS) -fo=lib\netisa_stub.obj lib\netisa_stub.c
+$(OBJ_DIR)\netisa.obj: $(SRC_LIB)\netisa.c $(SRC_LIB)\netisa.h
+	$(CC) $(CFLAGS) -fo=$@ $(SRC_LIB)\netisa.c
 
-lib\netisa.obj: lib\netisa.c lib\netisa.h
-	$(CC) $(CFLAGS) -fo=lib\netisa.obj lib\netisa.c
+# Launcher source files
+$(OBJ_DIR)\main.obj: launcher\main.c $(SRC_LIB)\screen.h $(SRC_LIB)\netisa.h launcher\menu.h
+	$(CC) $(CFLAGS) -fo=$@ launcher\main.c
 
-launcher\main.obj: launcher\main.c lib\screen.h lib\netisa.h launcher\menu.h
-	$(CC) $(CFLAGS) -fo=launcher\main.obj launcher\main.c
+$(OBJ_DIR)\menu.obj: launcher\menu.c $(SRC_LIB)\screen.h $(SRC_LIB)\netisa.h launcher\menu.h
+	$(CC) $(CFLAGS) -fo=$@ launcher\menu.c
 
-launcher\menu.obj: launcher\menu.c lib\screen.h lib\netisa.h launcher\menu.h
-	$(CC) $(CFLAGS) -fo=launcher\menu.obj launcher\menu.c
+$(OBJ_DIR)\wifi.obj: launcher\wifi.c $(SRC_LIB)\screen.h $(SRC_LIB)\netisa.h
+	$(CC) $(CFLAGS) -fo=$@ launcher\wifi.c
 
-launcher\wifi.obj: launcher\wifi.c lib\screen.h lib\netisa.h
-	$(CC) $(CFLAGS) -fo=launcher\wifi.obj launcher\wifi.c
-
-launcher\status.obj: launcher\status.c lib\screen.h lib\netisa.h
-	$(CC) $(CFLAGS) -fo=launcher\status.obj launcher\status.c
-
-# CATHODE has migrated to ../cathode/. Run wmake from there.
-# DISCORD has migrated to ../discord/. Run wmake from there.
-# CLAUDE  has migrated to ../claude/.  Run wmake from there.
+$(OBJ_DIR)\status.obj: launcher\status.c $(SRC_LIB)\screen.h $(SRC_LIB)\netisa.h
+	$(CC) $(CFLAGS) -fo=$@ launcher\status.c
 
 clean: .SYMBOLIC
-	-del lib\*.obj
-	-del launcher\*.obj
+	-del $(OBJ_DIR)\*.obj
 	-del netisa.com
 	-del netisa.exe
 	-del netisa_hw.exe

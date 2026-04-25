@@ -2,7 +2,7 @@
  * status.h - Shared status/error codes matching DOS netisa.h
  *
  * These codes are returned to the ISA bus and must match the DOS-side
- * definitions in dos/lib/netisa.h exactly.
+ * definitions in lib/netisa.h exactly.
  */
 
 #ifndef STATUS_H

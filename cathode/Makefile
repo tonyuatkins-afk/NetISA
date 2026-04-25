@@ -46,15 +46,13 @@ LIB_HW_OBJS = &
 all: CATHODE.EXE .SYMBOLIC
 
 CATHODE.EXE: $(OBJS) $(LIB_OBJS)
-    $(LINK) format dos libpath C:\WATCOM\lib286 libpath C:\WATCOM\lib286\dos &
-        name CATHODE option map=cathode.map &
+    $(LINK) system dos name CATHODE option map=cathode.map &
         file { $(OBJS) $(LIB_OBJS) }
 
 hw: CATHODE_HW.EXE .SYMBOLIC
 
 CATHODE_HW.EXE: $(OBJS) $(LIB_HW_OBJS)
-    $(LINK) format dos libpath C:\WATCOM\lib286 libpath C:\WATCOM\lib286\dos &
-        name CATHODE_HW option map=cathode_hw.map &
+    $(LINK) system dos name CATHODE_HW option map=cathode_hw.map &
         file { $(OBJS) $(LIB_HW_OBJS) }
 
 # Pattern rules

@@ -2,15 +2,10 @@
  * ui/browser.c - File browser pane.
  * Copyright (c) 2026 Tony Atkins. MIT License.
  *
- * Watcom DOS build: walks the current directory with _dos_findfirst /
- * _dos_findnext, filters to subdirectories plus the music file extensions
- * HEARO knows how to handle. Enter on a subdirectory chdir()s into it and
- * reloads; Backspace ascends to the parent. Selection is preserved via name
- * matching when reloading.
- *
- * Host build (HEARO_NOASM): populates a small hardcoded list so the UI is
- * exercisable without DOS. The on-disk path is identical from the caller's
- * point of view.
+ * Walks the current directory with _dos_findfirst / _dos_findnext, filters
+ * to subdirectories plus the music file extensions HEARO knows how to handle.
+ * Enter on a subdirectory chdir()s into it and reloads; Backspace ascends to
+ * the parent. Selection is preserved via name matching when reloading.
  */
 #include "browser.h"
 #include "screen.h"
@@ -126,12 +121,7 @@ static int change_directory(const char *path)
 void browser_init(const char *start_dir)
 {
     if (start_dir && start_dir[0]) {
-#ifndef HEARO_NOASM
         chdir(start_dir);
-#else
-        strncpy(current_dir, start_dir, sizeof(current_dir) - 1);
-        current_dir[sizeof(current_dir) - 1] = '\0';
-#endif
     }
     load_directory();
     selected = 0;
