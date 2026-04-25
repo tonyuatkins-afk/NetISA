@@ -173,6 +173,29 @@ The DOS side uses a TSR and INT 63h API to talk to it.
 
 ---
 
+## Why a Coprocessor?
+
+Every retro networking project I looked at before starting NetISA hits the same wall: TLS.
+
+The modern internet requires HTTPS, which means TLS 1.2 at minimum. Running TLS on a vintage CPU is possible. [WinGPT](https://www.dialup.net/wingpt/tls.html) got TLS 1.3 working on a 486 running Windows 3.1 by porting WolfSSL to 16-bit, and [Crypto Ancienne](https://github.com/classilla/cryanc) brings TLS 1.2/1.3 to classic Mac OS, AmigaOS, and a dozen other platforms. But both need at least a 486 or 68040, and both disable certificate verification and use fake entropy to make it fit. Below a 486, the asymmetric key exchange math simply doesn't work in any reasonable time.
+
+Hardware WiFi cards like [PicoMEM](https://github.com/FreddyVRetro/ISA-PicoMEM) solve the radio problem but not the crypto problem. They emulate an NE2000 on the ISA bus and bridge to WiFi, but TLS still has to run on the host. Proxies like [FrogFind](https://github.com/ActionRetro/FrogFind) and [Browservice](https://github.com/ttalvitie/browservice) work universally but require a second modern machine.
+
+NetISA takes a different approach: move TLS termination onto the card. The ESP32-S3 has hardware-accelerated AES/SHA/RSA/ECC, a real hardware RNG, and enough RAM for certificate chains. The host just sends and receives plaintext. An 8088 at 4.77 MHz can talk to any HTTPS API because it never touches the cryptography.
+
+## Related Projects
+
+**ISA / expansion bus hardware:**
+[PicoMEM](https://github.com/FreddyVRetro/ISA-PicoMEM) (FreddyVRetro): RP2040 ISA card with memory, storage, sound, and NE2000 WiFi. [PicoGUS](https://github.com/polpo/picogus) (Ian Scott): RP2040 ISA sound card. [Graphics Gremlin](https://github.com/schlae/graphics-gremlin) (Eric Schlaepfer): FPGA ISA video card. [PicoPCMCIA](https://www.yyzkevin.com/picopcmcia/) (Kevin Moonlight): RP2350 PCMCIA multi-card. [SEthernet/30](https://github.com/rhalkyard/SEthernet) (Richard Halkyard): Mac SE/30 PDS Ethernet.
+
+**Software TLS on vintage platforms:**
+[Crypto Ancienne](https://github.com/classilla/cryanc) (Cameron Kaiser): TLS 1.2/1.3 for classic Mac OS, AmigaOS, IRIX, and more. [WinGPT / WolfSSL Win16](https://www.dialup.net/wingpt/tls.html) (dialup.net): TLS 1.3 on Windows 3.1. [AmiSSL](https://github.com/jens-maus/amissl) (Jens Maus): full OpenSSL 3.x / TLS 1.3 for AmigaOS. [Secure Oldies](https://retrocoding.net/secure-oldies-v-windows-3x-and-winsock-11) (Didiet Noor): mbed TLS on Windows NT 3.x.
+
+**DOS networking:**
+[mTCP](https://www.brutman.com/mTCP/) (Michael Brutman): TCP/IP for DOS, 8088+. [DOStodon](https://github.com/SuperIlu/DOStodon) (SuperIlu): DOS Mastodon client. [MicroWeb](https://github.com/jhhoward/MicroWeb) (James Howard): web browser for 8088-class PCs.
+
+---
+
 ## Current phase
 
 Parts gathered (2026-04-23). Hardware bring-up is finally unblocked:

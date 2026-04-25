@@ -37,6 +37,50 @@ This specification is a single comprehensive document covering hardware, firmwar
 
 During pre-prototyping and Phase 0, the single-document format is intentional. Splitting prematurely creates synchronization problems between files. The split happens when the audience changes from "one developer building a prototype" to "a community building applications."
 
+### 1.3 Prior Art and the TLS Floor
+
+I spent a lot of time looking at what other people have built before committing to the coprocessor design. This subsection documents what I found and why it led to the architecture described in the rest of this spec. Appendix A contains the broader project index; this section is about the specific question of where the TLS floor lives on vintage hardware.
+
+#### The TLS floor
+
+The core question is: how far down the hardware ladder can you push TLS?
+
+The best data point I found is the WinGPT project (dialup.net, 2023). The author ported WolfSSL to 16-bit Windows 3.1 and got TLS 1.2 and 1.3 working on a Gateway 486DX2-66. This involved splitting WolfSSL's 1.25 MB `internal.c` across two object files to fit Win16's 64 KB code segment limit, using Open Watcom's Large memory model, and stripping out most cipher suites and features. The result works, but the author disabled certificate verification and substituted a fake RNG for real entropy. His TLS write-up at `dialup.net/wingpt/tls.html` is honest about the tradeoffs and worth reading in full.
+
+Didiet Noor's "Secure Oldies" series (`retrocoding.net`, 2022) did something similar with mbed TLS on Windows NT 3.51. Same fake entropy problem (uninitialized malloc memory passed to mbed TLS as a "strong" source, which he openly calls a lie), same Winsock 1.1 constraints. Both of these target 32-bit or late 16-bit platforms with at least a 486.
+
+Cameron Kaiser's Crypto Ancienne (`github.com/classilla/cryanc`) is the broadest software TLS effort. It runs on classic Mac OS, AmigaOS, IRIX, SunOS, AIX, NeXTSTEP, A/UX, and others. His reported practical floor is "early-to-mid 1990s systems." On a 25 MHz 68030 Mac IIci, a single TLS 1.2 transaction takes about 20 seconds. That is the handshake alone.
+
+The Amiga community has AmiSSL (Jens Maus), which wraps OpenSSL 3.x and provides real TLS 1.3. This is the most mature native TLS on any vintage platform, but it targets 68020+ with adequate memory.
+
+A comment from `kjs3` on the WinGPT Hacker News thread is worth quoting: AES was designed during the NIST competition to run on 8-bit microcontrollers, and reference implementations exist for the 8051 and MC6805. The symmetric crypto is not the problem. "The real killer in trying to do something like TLS on such small platforms is the key generation/exchange/management part." That matches what the specs imply: ECDHE with P-256 requires dozens of 256-bit modular multiplications, and on an 8088 with 16-bit registers and no multiply instruction, that is not going to finish before the server times out.
+
+Another technical detail worth noting: `wahern` pointed out on Hacker News that EdDSA certificate verification in TLS 1.3 requires buffering complete certificates in RAM before processing. End-entity certificates can be 4 KB or more. This does not affect NetISA (the ESP32-S3 has 8 MB PSRAM) but it would be a problem for any host-side implementation on a machine with limited conventional memory.
+
+#### WiFi hardware that does not do TLS
+
+PicoMEM (FreddyVRetro) is the closest existing hardware to NetISA. It is an RP2040-based 8-bit ISA card that does memory expansion, storage emulation, sound emulation, and NE2000 network emulation over the Pico W's WiFi radio (currently in beta). The WiFi feature presents an NE2000-compatible Ethernet interface to the host: Layer 2 transport. If you want HTTPS, you still need TLS somewhere, and on an 8088 or 286 host, that is not going to be in software.
+
+PicoPCMCIA (Kevin Moonlight) does the same thing in a PCMCIA form factor for vintage portables. Same Layer 2 limitation.
+
+BlueSCSI v2 with WiFi DaynaPORT emulation gives vintage Macs WiFi over the SCSI bus, but again: transport only, no TLS.
+
+Serial WiFi modems (WiFi232, The Old Net modem, Zimodem and its derivatives) emulate Hayes AT modems over RS-232. These are for BBS and Telnet. No TLS, no HTTP.
+
+None of these terminate TLS on the card.
+
+#### Proxies
+
+FrogFind, Browservice, WebOne, and Protoweb all work by running a modern machine as an intermediary. FrogFind strips pages to simplified HTTP. Browservice renders pages server-side with Chromium. WebOne transcodes HTTPS to HTTP. They solve the problem but they add a dependency.
+
+#### The gap NetISA fills
+
+When I mapped all of this out, the gap was clear: nobody has put TLS termination on a vintage expansion bus. Software TLS cannot reach below a 486. WiFi hardware cards provide radio transport but not crypto. Proxies need a second machine. Serial modems are plaintext.
+
+NetISA puts an ESP32-S3 (with hardware AES, SHA, RSA, and ECC acceleration, a hardware TRNG, and 8 MB PSRAM) on the ISA bus. The host sends plaintext commands and gets plaintext responses. The card handles everything else. An 8088 can talk to any HTTPS endpoint because the crypto happens on a 240 MHz processor with dedicated hardware that was designed for exactly this workload.
+
+The tradeoff is that you need a physical card. That is real. But for machines below the 486 floor, there is no software-only option.
+
 ---
 
 ## 2. Hardware Architecture
@@ -2907,6 +2951,17 @@ netisa/
 | XT-IDE + XTIDE Universal BIOS | ISA IDE controller with option ROM BIOS. Demonstrates latch timing race conditions fixed only via logic analyzer, CHS semantic versioning warnings, and skip-init patterns. |
 | BlueSCSI | RP2040/RP2350-based SCSI emulator. Demonstrates USB serial console diagnostics, crashlog analysis, and firmware recovery via SD card bootloader. |
 | Lo-tech ISA CompactFlash | Discrete TTL ISA storage adapter. Reference for Slot 8 compatibility, option ROM integration, and detailed troubleshooting documentation. |
+| PicoMEM (FreddyVRetro) | RP2040 8-bit ISA card: memory expansion, storage emulation, sound emulation, NE2000 WiFi (beta). Closest hardware analog to NetISA in form factor. NE2000 emulation provides Layer 2 transport only. NetISA differs by terminating TLS on the card. |
+| PicoPCMCIA (Kevin Moonlight) | RP2350 PCMCIA multi-card. Same Layer 2 transport limitation as PicoMEM. NetISA's TLS-on-card model could in principle be adapted to PCMCIA in a future revision. |
+| WinGPT / WolfSSL Win16 (dialup.net) | TLS 1.3 on 16-bit Windows 3.1 via WolfSSL ported to Open Watcom Large model. Establishes the practical software-TLS floor at a 486DX2. Disables certificate verification and uses a fake RNG. Detailed write-up at `dialup.net/wingpt/tls.html`. See section 1.3. |
+| Crypto Ancienne (Cameron Kaiser) | TLS 1.2/1.3 for classic Mac OS, AmigaOS, IRIX, SunOS, AIX, NeXTSTEP, A/UX. Broadest cross-platform software TLS effort for vintage systems. Practical floor: 25 MHz 68030 with ~20 s handshakes. See section 1.3. |
+| AmiSSL (Jens Maus) | OpenSSL 3.x / TLS 1.3 wrapper for AmigaOS. Most mature native TLS on any vintage platform. Targets 68020+; demonstrates that real TLS is achievable when memory and clock allow. |
+| Secure Oldies (Didiet Noor) | mbed TLS on Windows NT 3.51 with Winsock 1.1. Same fake-entropy compromise as WinGPT (uninitialized malloc memory passed as a "strong" source). Documents the practical limits of bringing modern TLS to late-16-bit platforms. |
+| SEthernet/30 (Richard Halkyard) | Mac SE/30 PDS Ethernet card. Reference for low-cost, single-developer vintage networking hardware on a non-ISA bus. |
+| DOStodon (SuperIlu) | DOS Mastodon client. Reference application that NetISA could host as a HTTPS-native suite app once the card is on the bench. |
+| FrogFind (ActionRetro) | HTTP proxy that strips modern pages to simplified, HTTP-only output for vintage browsers. Solves the TLS problem by terminating it on a separate modern machine. NetISA removes the second-machine dependency. |
+| Browservice (ttalvitie) | Server-side Chromium rendering proxy. Same dependency tradeoff as FrogFind. |
+| WebOne, Protoweb | HTTPS-to-HTTP transcoding proxies. Same dependency tradeoff. |
 
 ---
 
