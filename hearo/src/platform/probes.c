@@ -254,19 +254,42 @@ extern u16 cpu_flags_after_clearing_high(void);
     value [ax]          \
     modify [ax bx];
 
-/* 386+ EFLAGS bit toggleability. The operand-size override (0x66) is emitted
- * by Watcom when the 32-bit forms appear under `.386`. We toggle the masked
- * bits, read EFLAGS back, restore the original, and test which bits actually
- * flipped. The wrapper is an _asm block (not #pragma aux) so the flags-bound
- * conditional uses the test result directly without a clobbering MOV. */
+/* 386+ EFLAGS bit toggleability. Watcom 16-bit #pragma aux only accepts
+ * 16-bit register names in parm/value/modify lists, so the 32-bit mask is
+ * split into lo:hi u16 halves and reassembled into ebx inside the asm body.
+ * The `.386` directive enables 32-bit instructions in this block only. The
+ * "neg eax / sbb ax, ax / neg ax" tail is the standard Watcom idiom for
+ * "set ax to 1 if eax is non-zero, else 0". */
+extern int cpu_eflags_toggle_lo_hi(u16 mask_lo, u16 mask_hi);
+#pragma aux cpu_eflags_toggle_lo_hi = \
+    ".386"               \
+    "movzx ebx, bx"      \
+    "shl   ebx, 16"      \
+    "movzx eax, ax"      \
+    "or    ebx, eax"     \
+    "pushfd"             \
+    "pop   ecx"          \
+    "mov   eax, ecx"     \
+    "xor   eax, ebx"     \
+    "push  eax"          \
+    "popfd"              \
+    "pushfd"             \
+    "pop   eax"          \
+    "push  ecx"          \
+    "popfd"              \
+    "xor   eax, ecx"     \
+    "and   eax, ebx"     \
+    "neg   eax"          \
+    "sbb   ax, ax"       \
+    "neg   ax"           \
+    parm   [ax] [bx]     \
+    value  [ax]          \
+    modify [ax bx cx];
+
 static int cpu_eflags_can_toggle(u32 mask)
 {
-    /* Stubbed for v1.0: `_asm { .386 ... pushfd/popfd ... }` triggers the
-     * same Watcom assembler-CPU-level error as the cpuid block. Returning 0
-     * means cpu_flag_test classifies anything past stage 2 as "386" rather
-     * than 486/Pentium, which is fine for v1.0. v1.0.1 will refine. */
-    (void)mask;
-    return 0;
+    return cpu_eflags_toggle_lo_hi((u16)(mask & 0xFFFFUL),
+                                   (u16)((mask >> 16) & 0xFFFFUL));
 }
 
 int cpu_flag_test(void)
@@ -290,15 +313,42 @@ int cpu_has_cpuid(void)
     return cpu_eflags_can_toggle(0x00200000UL);
 }
 
+/* CPUID with leaf=1 returns family/model/stepping in eax and feature
+ * flags in edx. For v1.0 we only consume the eax word from leaf=1, so the
+ * pragma returns eax as a (lo, hi) pair via dx:ax. The wrapper composes
+ * the leaf in eax in-asm, runs CPUID, returns the eax word.
+ *
+ * Watcom 16-bit calling convention: u32 return goes in dx:ax (high in dx,
+ * low in ax). */
+extern u32 cpuid_eax_for(u16 leaf_lo, u16 leaf_hi);
+#pragma aux cpuid_eax_for = \
+    ".586"            \
+    "movzx ebx, bx"   \
+    "shl   ebx, 16"   \
+    "movzx eax, ax"   \
+    "or    eax, ebx"  \
+    "push  ebx"       \
+    "cpuid"           \
+    "pop   ebx"       \
+    "mov   edx, eax"  \
+    "shr   edx, 16"   \
+    parm   [ax] [bx]  \
+    value  [dx ax]    \
+    modify [ax bx cx dx];
+
 void cpu_cpuid(u32 leaf, u32 *eax_out, u32 *ebx_out, u32 *ecx_out, u32 *edx_out)
 {
-    /* CPUID stub: a Watcom -2 build of an _asm block with `.586` and `cpuid`
-     * trips an "Invalid instruction with current CPU setting" error on
-     * unrelated downstream lines that we have not been able to localize. The
-     * detection engine reads vendor/family from FLAGS-bit-walk classification
-     * (cpu.c) regardless; CPUID extras come back when this builds clean. */
-    (void)leaf;
-    if (eax_out) *eax_out = 0;
+    u32 a = 0;
+    if (!cpu_has_cpuid()) {
+        if (eax_out) *eax_out = 0;
+        if (ebx_out) *ebx_out = 0;
+        if (ecx_out) *ecx_out = 0;
+        if (edx_out) *edx_out = 0;
+        return;
+    }
+    a = cpuid_eax_for((u16)(leaf & 0xFFFFUL), (u16)((leaf >> 16) & 0xFFFFUL));
+    if (eax_out) *eax_out = a;
+    /* ebx/ecx/edx not consumed by cpu.c yet; v1.1 widens this. */
     if (ebx_out) *ebx_out = 0;
     if (ecx_out) *ecx_out = 0;
     if (edx_out) *edx_out = 0;
@@ -333,19 +383,54 @@ u32 cpu_pit_loop(u16 ticks)
 
 /* ===== 7. FPU presence and brand ===== */
 
-/* FPU presence and brand: stubbed for v1.0 to keep the build green. The
- * #pragma aux + _asm with FPU opcodes (fninit/fnstsw/fnstcw) trip Watcom's
- * assembler "Invalid instruction with current CPU setting" check even with
- * `.8087` inside the block and -fpi87 on the cmdline. v1.0.1 will sort the
- * right combination of flags and reactivate the real FPU probe.
+/* FPU presence + status/control word reads.
  *
- * fpu_present returning 1 here means detect/fpu.c will report "FPU present"
- * for any system that has an FPU listed in cpu.fpu_type, which is the
- * synthetic-stub default. Real-iron behavior currently matches the v1.0
- * stub-detect path until we wire the real probe. */
-int fpu_present(void)        { return 1; }
-u16 fpu_status_word(void)    { return 0; }
-u16 fpu_control_word(void)   { return 0x037F; }  /* "387 or later" answer */
+ * fpu_present preloads ax with 0xFFFF, runs FNINIT to zero the status word
+ * (only happens if an FPU is present), then FNSTSW AX which writes the
+ * status word to AX (or NOPs without an FPU). If AX is still non-zero
+ * afterwards, no FPU; we return 1 if zero, 0 otherwise.
+ *
+ * fpu_status_word and fpu_control_word read after-the-fact (caller has
+ * already run FNINIT or whatever sequence sets the relevant bits). */
+extern int fpu_present_pragma(void);
+#pragma aux fpu_present_pragma = \
+    ".286"              \
+    "mov  ax, 0FFFFh"   \
+    "fninit"            \
+    "fnstsw ax"         \
+    "neg  ax"           \
+    "sbb  ax, ax"       \
+    "neg  ax"           \
+    "xor  ax, 1"        \
+    value [ax]          \
+    modify [ax];
+
+int fpu_present(void) { return fpu_present_pragma(); }
+
+extern u16 fpu_status_word_pragma(void);
+#pragma aux fpu_status_word_pragma = \
+    ".286"              \
+    "fnstsw ax"         \
+    value [ax]          \
+    modify [ax];
+
+u16 fpu_status_word(void) { return fpu_status_word_pragma(); }
+
+/* FNSTCW writes to a 16-bit memory operand only; no AX form. The asm
+ * pushes a temp on the stack, addresses it via bx, then pops to ax. */
+extern u16 fpu_control_word_pragma(void);
+#pragma aux fpu_control_word_pragma = \
+    ".286"           \
+    "push  bx"       \
+    "sub   sp, 2"    \
+    "mov   bx, sp"   \
+    "fnstcw [ss:bx]" \
+    "pop   ax"       \
+    "pop   bx"       \
+    value  [ax]      \
+    modify [ax bx];
+
+u16 fpu_control_word(void) { return fpu_control_word_pragma(); }
 
 /* IIT 2C87 detect: stub for now (port probe disabled until we sort the
  * 16-bit-port inp/outp accept-list under -2 mode). */
