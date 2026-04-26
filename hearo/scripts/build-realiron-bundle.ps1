@@ -17,7 +17,10 @@ $root = Resolve-Path "$PSScriptRoot\.."
 # but CRLF is the DOS convention. This is feedback_dos_batch_relay.md item 1.
 function Convert-ToCrlf([string]$path) {
     if (-not (Test-Path $path)) { return }
-    $content = Get-Content -Raw -Encoding Byte $path
+    # [System.IO.File]::ReadAllBytes works on both Windows PowerShell 5 and
+    # PowerShell 7+. Get-Content -Encoding Byte was removed in PS7 in favour
+    # of -AsByteStream; using the .NET API sidesteps the version split.
+    $content = [System.IO.File]::ReadAllBytes($path)
     $text = [System.Text.Encoding]::ASCII.GetString($content)
     $text = $text -replace "`r`n", "`n"        # normalize first
     $text = $text -replace "`n", "`r`n"        # then add CR
