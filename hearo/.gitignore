@@ -8,6 +8,8 @@
 *.sym
 *.LOG
 *.log
+*.OUT
+build.log
 
 # Config files (user-specific)
 HEARO.CFG
