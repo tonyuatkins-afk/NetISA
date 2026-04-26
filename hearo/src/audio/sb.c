@@ -316,15 +316,28 @@ static hbool sb_init(const hw_profile_t *hw)
     S.dma16     = hw->sb.dma_hi  ? hw->sb.dma_hi  : 5;
     S.dsp_major = hw->sb.dsp_major;
     S.dsp_minor = hw->sb.dsp_minor;
-    /* SB_SINGLECYCLE=1 in env forces SB 1.x-style 0x14 single-cycle DMA with
-     * ISR re-arm. Useful as a diagnostic and as a fallback for chips that
-     * detect as SB Pro 2 / SB16 but whose auto-init mode (0x1C / 0x90 / 0xC6)
-     * does not actually cycle. The Yamaha YMF715 OPL3-SAx in pure MS-DOS
-     * mode (no vendor init utility) demonstrates this: TESTPLAY plays exactly
-     * one half-block then halts. Single-cycle mode re-issues 0x14 from the
-     * ISR after every block, sidestepping any auto-init implementation gap. */
+    /* SB_SINGLECYCLE in env overrides the clone-detect default. Useful as a
+     * diagnostic and as a fallback for chips that detect as SB Pro 2 / SB16
+     * but whose auto-init mode (0x1C / 0x90 / 0xC6) does not actually cycle.
+     * The Yamaha YMF715 OPL3-SAx in pure MS-DOS mode (no vendor init utility)
+     * demonstrates this: TESTPLAY plays exactly one half-block then halts.
+     * Single-cycle mode re-issues 0x14 from the ISR after every block,
+     * sidestepping any auto-init implementation gap.
+     *
+     * Resolution order:
+     *   1. Env set to "0": explicit user-off, force HFALSE even on clones.
+     *   2. Env set to anything else (including "1"): explicit user-on.
+     *   3. Env unset: default from hw->sb.flag_clone (set by detect/audio.c
+     *      via the DSP 0xE3 copyright probe). Real Creative DSPs return a
+     *      string containing CREATIVE; clones either time out or return
+     *      something else, and either way flag_clone is set, defaulting
+     *      this driver to single-cycle. */
     env = getenv("SB_SINGLECYCLE");
-    S.force_single_cycle = (env && env[0] && env[0] != '0') ? HTRUE : HFALSE;
+    if (env && env[0]) {
+        S.force_single_cycle = (env[0] != '0') ? HTRUE : HFALSE;
+    } else {
+        S.force_single_cycle = hw->sb.flag_clone ? HTRUE : HFALSE;
+    }
     /* Hard-cap IRQ to legal PIC range. install_isr's irq_vector() would
      * compute 0x70 + (irq - 8) for any irq >= 8, so an irq of 16 would
      * vector to 0x78 (free DOS slot), 17 to 0x79, etc., quietly hooking

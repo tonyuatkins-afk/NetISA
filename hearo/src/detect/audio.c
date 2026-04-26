@@ -265,6 +265,83 @@ static hbool sb_dsp_version(u16 base, u8 *maj, u8 *min)
     return HFALSE;
 }
 
+/* DSP copyright probe (cmd 0xE3). Real Creative DSPs from 2.x onward
+ * return a NUL-terminated copyright string typically containing
+ * "CREATIVE TECHNOLOGY". Clone chips, notably the YMF715 OPL3-SAx in
+ * MS-DOS mode, either time out on 0xE3 or return a non-Creative string.
+ *
+ * Returns HTRUE iff the chip both responds AND the response contains
+ * "CREATIVE" (case-insensitive). HFALSE means clone or no support, both
+ * of which warrant defaulting to single-cycle DMA in the driver: the
+ * caller cannot tell those apart, but they fall on the same side of the
+ * decision boundary.
+ *
+ * Caller must have already done dsp_reset + sb_dsp_version successfully.
+ * Skips the probe for DSP < 2.x where 0xE3 was not yet implemented; the
+ * caller treats "no probe" as "not a clone" because real SB 1.x cards
+ * exist and 1.x clones are vanishingly rare in 2026. */
+static hbool sb_dsp_is_creative(u16 base)
+{
+    char buf[80];
+    u16 i;
+    u8  pos;
+
+    /* Wait for write buffer clear before issuing 0xE3. */
+    for (i = 0; i < 1000; i++) {
+        if ((ad_inp(base + 0x0C) & 0x80) == 0) break;
+        ad_delay_us(10);
+    }
+    if (i == 1000) return HFALSE;
+
+    ad_outp(base + 0x0C, 0xE3);
+
+    /* Read bytes until NUL terminator, buffer full, or per-byte timeout.
+     * 200 iterations * 5us = 1 ms per byte; ~50-byte string completes in
+     * well under that on a real chip. A clone that does not implement
+     * 0xE3 hangs at the first read, returning HFALSE inside 1 ms. */
+    for (pos = 0; pos < (u8)(sizeof(buf) - 1); pos++) {
+        for (i = 0; i < 200; i++) {
+            if (ad_inp(base + 0x0E) & 0x80) {
+                buf[pos] = (char)ad_inp(base + 0x0A);
+                break;
+            }
+            ad_delay_us(5);
+        }
+        if (i == 200) {
+            /* Timeout: chip did not finish the string. Issue a reset so
+             * subsequent DSP commands (e.g. sb_asp_present) don't feed
+             * a state machine that's still waiting to send byte N+1. */
+            ad_outp(base + 6, 1);
+            ad_delay_us(5);
+            ad_outp(base + 6, 0);
+            return HFALSE;
+        }
+        if (buf[pos] == 0) break;
+    }
+    buf[pos] = '\0';
+
+    /* Case-insensitive substring search for "CREATIVE". ASCII | 0x20
+     * lowercases letters; non-letter bytes are unaffected, which is
+     * fine here because we are matching letters only. */
+    {
+        u8 j;
+        if (pos < 8) return HFALSE;
+        for (j = 0; (u8)(j + 8) <= pos; j++) {
+            if (((buf[j+0] | 0x20) == 'c') &&
+                ((buf[j+1] | 0x20) == 'r') &&
+                ((buf[j+2] | 0x20) == 'e') &&
+                ((buf[j+3] | 0x20) == 'a') &&
+                ((buf[j+4] | 0x20) == 't') &&
+                ((buf[j+5] | 0x20) == 'i') &&
+                ((buf[j+6] | 0x20) == 'v') &&
+                ((buf[j+7] | 0x20) == 'e')) {
+                return HTRUE;
+            }
+        }
+    }
+    return HFALSE;
+}
+
 static hbool emu8000_present(u16 sb_base)
 {
     /* EMU8000 sits at sb_base + 0x400 typically (i.e. 620h for sb=220h). */
@@ -350,6 +427,17 @@ static void probe_sb(hw_profile_t *hw)
         hw->sb.dma_hi = dhi ? dhi : 5;
         hw->sb.dsp_major = maj;
         hw->sb.dsp_minor = min;
+        /* Clone fingerprint via DSP 0xE3. Skipped for DSP 1.x where the
+         * command predates the silicon. Sets flag_clone if the chip does
+         * not return a CREATIVE-bearing copyright string. The driver reads
+         * this flag to default force_single_cycle when SB_SINGLECYCLE env
+         * is unset, removing the manual-override step on YMF715 and similar
+         * clones whose auto-init DMA implementation is broken. */
+        if (maj >= 2) {
+            if (!sb_dsp_is_creative(base)) {
+                hw->sb.flag_clone = HTRUE;
+            }
+        }
         if (mpu) hw->mpu_base = mpu;
 
         if (maj == 1) {

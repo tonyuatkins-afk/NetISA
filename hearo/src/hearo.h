@@ -99,7 +99,7 @@ typedef enum {
     MIDI_DB50XG, MIDI_SCB55, MIDI_UNKNOWN
 } midi_synth_t;
 
-typedef struct { u16 base; u8 irq, dma_lo, dma_hi; hbool has_asp; u8 dsp_major, dsp_minor; } sb_config_t;
+typedef struct { u16 base; u8 irq, dma_lo, dma_hi; hbool has_asp; u8 dsp_major, dsp_minor; hbool flag_clone; } sb_config_t;
 typedef struct { u16 base; u8 irq, dma; u32 ram_kb; hbool has_db, has_codec; } gus_config_t;
 typedef enum { NISA_NOT_FOUND=0, NISA_NO_LINK, NISA_LINK_UP } netisa_status_t;
 
