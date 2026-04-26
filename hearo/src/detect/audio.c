@@ -265,6 +265,61 @@ static hbool sb_dsp_version(u16 base, u8 *maj, u8 *min)
     return HFALSE;
 }
 
+/* SB16 mixer read at base+0x04 (index) / base+0x05 (data). Same convention
+ * as SB Pro: write index, then read data. Settle delay between the two ports
+ * matches the port-0x80 pattern used elsewhere for the SB Pro mixer; the
+ * mixer chip is slower than the DSP and a back-to-back outp/inp on a fast
+ * bus latches stale data. */
+static u8 sb_read_mixer(u16 base, u8 reg)
+{
+    ad_outp(base + 0x04, reg);
+    ad_delay_us(2);
+    return ad_inp(base + 0x05);
+}
+
+/* SB16 mixer reg 0x81 (DMAINFO) reports which ISA DMA channels the chip is
+ * actually wired to. Bit layout per Creative SB16 mixer spec:
+ *   bit 0: 8-bit DMA channel 0
+ *   bit 1: 8-bit DMA channel 1
+ *   bit 3: 8-bit DMA channel 3 (channel 2 is reserved for floppy)
+ *   bit 5: 16-bit DMA channel 5
+ *   bit 6: 16-bit DMA channel 6
+ *   bit 7: 16-bit DMA channel 7
+ * The chip is more authoritative than the BLASTER env variable: a typo in
+ * BLASTER produces silent wrong-channel behavior at runtime, while the
+ * mixer reports what is physically jumpered.
+ *
+ * Vibra 16XV (CT4170) has only an 8-bit DMA channel wired but reports
+ * itself as DSP v4.13 (SB16). Mixer 0x81 has an 8-bit bit set and zero
+ * 16-bit bits; we collapse hidma to the same channel as the 8-bit channel
+ * so the driver can detect lo == hi later and route 16-bit data over the
+ * 8-bit DMA path. (The driver-side handling of that case is future work.)
+ *
+ * Pattern from Mpxplay SC_SB16.C:170-179, independently re-implemented. */
+static void sb_discover_dma_info(hw_profile_t *hw)
+{
+    u8 dmainfo;
+    u8 hw_lo, hw_hi;
+    if (hw->sb.dsp_major < 4) return;          /* SB Pro and earlier lack reg 0x81 */
+    dmainfo = sb_read_mixer(hw->sb.base, 0x81);
+    /* 0xFF = floating bus or chip not responding; 0x00 = no channels reported.
+     * Either way the read is unusable, leave env-supplied values intact. */
+    if (dmainfo == 0xFF || dmainfo == 0x00) return;
+
+    if      (dmainfo & 0x02) hw_lo = 1;
+    else if (dmainfo & 0x01) hw_lo = 0;
+    else if (dmainfo & 0x08) hw_lo = 3;
+    else                     return;            /* no 8-bit bit set; junk read */
+
+    if      (dmainfo & 0x20) hw_hi = 5;
+    else if (dmainfo & 0x40) hw_hi = 6;
+    else if (dmainfo & 0x80) hw_hi = 7;
+    else                     hw_hi = hw_lo;     /* Vibra 16XV: no separate hidma */
+
+    hw->sb.dma_lo = hw_lo;
+    hw->sb.dma_hi = hw_hi;
+}
+
 /* DSP copyright probe (cmd 0xE3). Real Creative DSPs from 2.x onward
  * return a NUL-terminated copyright string typically containing
  * "CREATIVE TECHNOLOGY". Clone chips, notably the YMF715 OPL3-SAx in
@@ -479,6 +534,9 @@ static void probe_sb(hw_profile_t *hw)
                 hw->aud_devices |= AUD_SB_16;
                 add_card(hw, "Sound Blaster 16 (DSP %u.%02u)", maj, min);
             }
+            /* SB16-only: cross-check BLASTER-supplied DMA channels against
+             * the chip's mixer report. Hardware wins on conflict. */
+            sb_discover_dma_info(hw);
         }
     }
 }
