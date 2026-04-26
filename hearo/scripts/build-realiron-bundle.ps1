@@ -37,7 +37,7 @@ try {
     $files = @(
         'HEARO.exe', 'TESTDET.exe', 'TESTBOOT.exe', 'TESTPLAY.exe',
         'TESTUI.exe', 'TESTCORD.exe', 'TESTQUIR.exe', 'TESTBIP.exe',
-        'SMOKETST.BAT', 'README-REALIRON.TXT',
+        'SMOKETST.BAT', 'README-REALIRON.TXT', 'USBDOS.TXT',
         'data\TONE.WAV', 'data\TONE.MOD', 'data\TONE.S3M',
         'data\TONE.XM',  'data\TONE.MID', 'data\BAND.MID', 'data\TONE.VGM'
     )

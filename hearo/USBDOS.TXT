@@ -1,0 +1,188 @@
+USB mass storage in MS-DOS mode
+================================
+
+Goal: mount a USB flash drive as a normal DOS drive letter so files
+can be moved to the test box without the floppy shuffle and without
+needing a working network stack.
+
+Limitations going in
+--------------------
+
+  USB 1.1 speed only.  USBASPI talks UHCI / OHCI; no EHCI (USB 2.0)
+  and no XHCI (USB 3.0).  Modern hosts usually fall back to 1.1 for
+  legacy MSC devices, but transfer is ~1 MB/s.
+
+  Insert before boot.  Hot-plug does not work in DOS.  Plug the stick
+  in, then power on, then USBASPI enumerates it.
+
+  FAT16 or FAT32.  Drives larger than ~32 GB are formatted FAT32 by
+  default and that works.  exFAT and NTFS do not.
+
+  Older / smaller sticks are more reliable.  4 GB and under from any
+  vendor of that era usually just works.  Some modern sticks identify
+  themselves in ways USBASPI does not understand.
+
+The two drivers
+---------------
+
+USB-on-DOS needs two layered drivers because DOS has no native USB
+stack.
+
+  USBASPI.SYS    Panasonic.  Owns the USB host controller (UHCI or
+                 OHCI), enumerates devices, and presents USB Mass
+                 Storage Class devices through the ASPI (Advanced
+                 SCSI Programming Interface) host-adapter API.  This
+                 is the same ASPI that SCSI cards use, so it lets
+                 the next layer pretend the USB stick is a SCSI disk.
+
+  DI1000DD.SYS   Datoptic.  Bridges the ASPI device to the DOS block
+                 device API.  This is the layer that actually claims
+                 a drive letter.
+
+Without DI1000DD, USBASPI sees the device but DOS does not see a
+drive letter.  Without USBASPI, DI1000DD has no ASPI to talk to.
+
+Where to get them
+-----------------
+
+Neither vendor distributes these anymore.  Working copies live in:
+
+  - The "Bootable USB DOS" package by Bret Johnson on his site.
+  - VOGONS threads under "USB drive in DOS" (search the forum).
+  - The Internet Archive Wayback machine, mirroring the original
+    Panasonic and Datoptic download pages from the early 2000s.
+
+Hash the .SYS files against a known-good copy from VOGONS before
+trusting them; the originals are unsigned and have been modified by
+various people over the years.
+
+Install layout on the test box
+------------------------------
+
+  C:\USB\USBASPI.SYS
+  C:\USB\DI1000DD.SYS
+
+Any other path works; the CONFIG.SYS lines just need to match.
+
+CONFIG.SYS lines
+----------------
+
+Add to the [COMMON] section so the drivers load regardless of which
+config menu choice the user picks:
+
+  DEVICE=C:\USB\USBASPI.SYS /V /W
+  DEVICE=C:\USB\DI1000DD.SYS /D
+
+Flags:
+
+  /V     verbose.  Prints what USBASPI sees while loading.  Also has
+         the side effect of slowing init enough that USB enumeration
+         completes; without it some hosts fail to detect the stick.
+  /W     wait for user keypress on error.  Useful while debugging;
+         remove for unattended boot.
+  /D     DI1000DD: assign drive letter immediately, not deferred.
+
+Drive letter math
+-----------------
+
+DOS assigns letters in CONFIG.SYS load order, then AUTOEXEC.BAT order.
+With C: as the hard disk:
+
+  C:    HDD (already there)
+  D:    USB stick     (DI1000DD claims it; loads in CONFIG.SYS)
+  E:    CD-ROM        (MSCDEX claims it; runs in AUTOEXEC.BAT, after D:)
+
+If the system has no CD-ROM, USB lands on D: and that is the only
+extra letter.  If the system has multiple HDD partitions, shift the
+USB letter accordingly.
+
+LASTDRIVE in CONFIG.SYS must be high enough to cover all letters.
+LASTDRIVE=H is plenty.
+
+Booting into MS-DOS mode from Windows 98 SE
+-------------------------------------------
+
+The PIF file at
+
+  C:\Users\tonyu\Downloads\restart_in_ms-dos_mode_USB.pif
+
+is a copy of the standard "Restart in MS-DOS mode" shortcut, with the
+two USB DEVICE= lines added to its embedded [COMMON] CONFIG.SYS block.
+Double-click it from Windows; the system will reboot into pure MS-DOS
+with USB drivers loaded.
+
+To replicate on another machine:
+
+  1. Copy "Restart in MS-DOS mode" off the existing one (Properties
+     -> Program -> Advanced -> "Use this CONFIG.SYS file").
+  2. Open the .pif in a hex editor; the CONFIG.SYS / AUTOEXEC.BAT
+     blocks are stored as length-prefixed extension records after
+     the main header.
+  3. Add the two USB DEVICE= lines to the CONFIG.SYS [COMMON] block.
+  4. Recompute the extension record's data-size field (the byte
+     count of the CONFIG.SYS text), and the next-extension offset
+     pointing to AUTOEXECBAT (which moves later in the file by the
+     number of bytes you added).
+  5. Save.  Drop the patched .pif back into Windows; it shows up as
+     a shortcut you can run.
+
+This step is fragile.  Easier path: just copy the already-patched
+restart_in_ms-dos_mode_USB.pif to the new machine and verify the
+DOS install paths (C:\USB\USBASPI.SYS) match.
+
+Troubleshooting
+---------------
+
+  "No USB host controller found" from USBASPI:
+    BIOS has USB Legacy Support disabled.  Reboot, enter BIOS,
+    enable Legacy USB Support / USB Mass Storage Support.
+
+  "No USB devices found" from USBASPI even though stick is inserted:
+    Try a different USB port (root hub vs. hub).  Some hosts only
+    enumerate devices on the root hub at boot.
+    Try a smaller / older stick.  Some modern sticks are not seen.
+    Confirm the stick boots elsewhere (Windows can read it).
+
+  USBASPI sees the device, DI1000DD says "no drives":
+    Drive is partitioned in a way DOS cannot read (GPT, exFAT, NTFS,
+    or FAT32 with extended partition tables).  Reformat with a single
+    FAT16 or FAT32 primary partition.
+
+  Drive letter assigned but reads return garbage / hang:
+    Bad cable, bad port, or the stick draws too much current for the
+    host.  Try a different stick.  Some hosts cannot supply enough
+    current for newer high-density sticks.
+
+  Files visible but cannot be executed ("Bad command or file name"):
+    Filename not 8.3.  DOS in real mode cannot see VFAT long names.
+    Rename or use the auto-generated short alias (DIR /X shows it).
+
+Workflow once it works
+----------------------
+
+  Build bundle on Windows host:
+    cd C:\Development\NetISA\hearo
+    .\scripts\build-realiron-bundle.ps1
+
+  Insert USB stick in Windows host, copy:
+    C:\Development\HEARO-realiron.zip   ->   USB:\
+
+  Move USB to test box.  Boot via the patched PIF.
+
+  In MS-DOS mode:
+    D:                       (switch to USB)
+    PKUNZIP HEARO-realiron.zip C:\HEARO\
+    C:
+    CD HEARO
+    SMOKETST.BAT             (or RUNALL.BAT, etc.)
+
+  When done, copy LOG files back:
+    COPY *.LOG D:\           (if drive is FAT32 and writable)
+    COPY *.OUT D:\
+
+  Reboot to Windows, copy LOGs off the USB stick into the repo for
+  analysis.
+
+Round trip: ~3 minutes on a working setup, vs. ~15 minutes for the
+floppy / FTP path.  The investment in getting USB working pays back
+on the second test run.
