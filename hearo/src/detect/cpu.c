@@ -14,6 +14,7 @@
  */
 #include "cpu.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* External assembly stubs (asm/cpustubs.asm) */
@@ -21,6 +22,7 @@ extern int  cpu_flag_test(void);     /* returns class hint: 0=8086,1=186,2=286,3
 extern int  cpu_has_cpuid(void);
 extern void cpu_cpuid(u32 leaf, u32 *eax, u32 *ebx, u32 *ecx, u32 *edx);
 extern u32  cpu_pit_loop(u16 ticks); /* returns inner loop count for a PIT interval */
+extern u32  cpu_rdtsc_mhz(void);     /* RDTSC delta over PIT 1ms gate; Pentium+ only */
 
 #ifdef HEARO_NOASM
 /* Fallback stubs let the host compiler build; numbers are synthetic. */
@@ -28,10 +30,12 @@ int  cpu_flag_test(void) { return 4; }
 int  cpu_has_cpuid(void) { return 0; }
 void cpu_cpuid(u32 l, u32 *a, u32 *b, u32 *c, u32 *d) { (void)l; *a=*b=*c=*d=0; }
 u32  cpu_pit_loop(u16 t)  { (void)t; return 100000UL; }
+u32  cpu_rdtsc_mhz(void)  { return 0; }
 #endif
 
 static u16 nominal_clocks[] = {
-    4, 5, 6, 8, 10, 12, 16, 20, 25, 33, 40, 50, 66, 75, 90, 100, 120, 133, 0
+    4, 5, 6, 8, 10, 12, 16, 20, 25, 33, 40, 50, 66, 75, 90,
+    100, 120, 133, 150, 166, 180, 200, 233, 266, 300, 333, 366, 400, 0
 };
 
 static u16 nearest_nominal(u16 mhz)
@@ -95,16 +99,37 @@ void cpu_detect(hw_profile_t *hw)
         }
     }
 
-    /* PIT timing -> approximate MHz. cpu_pit_loop times one millisecond and
-     * returns the iteration count. Each loop iteration is roughly 10 CPU
-     * cycles on 386+/486 (in al,dx + test + inc + jmp), so mhz = count/100
-     * gives the right order of magnitude. The constant is rough by design;
-     * actual cycles per iter vary across 286/386/486/Pentium. DOSBox-X's
-     * PIT-2 OUT2 line behavior makes the count unreliable under emulation
-     * but real iron lands within ~10% of the nominal. */
-    loop_count = cpu_pit_loop(1193);
-    if (loop_count == 0) loop_count = 1;
-    mhz = (loop_count + 49UL) / 100UL;
+    /* MHz detection. Default is the legacy PIT-loop estimator which gives a
+     * wrong-but-non-hanging answer (~17 MHz for a 233 MHz Pentium MMX
+     * because the loop body's `inp(0x61)` is ISA-bus-bound at ~1us/iter
+     * regardless of CPU clock). Set CPU_RDTSC=1 in the environment to opt
+     * into the more accurate RDTSC-based path, which uses a `rdtsc` over a
+     * PIT 1ms gate to read true CPU cycles per millisecond.
+     *
+     * Why opt-in: on the Toshiba 320CDT (Pentium MMX 233, Win98 SE MS-DOS
+     * mode, 2026-04-25), the RDTSC path hung TESTDET before producing any
+     * output, even with a safety counter on the spin loop. The safety
+     * counter would have caught a runaway spin, so the hang must be in
+     * `rdtsc` itself, raising an unhandled exception that traps to a
+     * non-existent IDT entry under Win98's restart-to-DOS-mode CR4 state.
+     * Defaulting opt-out protects the test harness from this class of
+     * chip / BIOS quirks until we can detect them reliably. */
+    {
+        char *rdtsc_env = getenv("CPU_RDTSC");
+        hbool use_rdtsc = (rdtsc_env && rdtsc_env[0] && rdtsc_env[0] != '0' && cpu_has_cpuid()) ? HTRUE : HFALSE;
+        if (use_rdtsc) {
+            mhz = cpu_rdtsc_mhz();
+            if (mhz == 0) {
+                loop_count = cpu_pit_loop(1193);
+                if (loop_count == 0) loop_count = 1;
+                mhz = (loop_count + 49UL) / 100UL;
+            }
+        } else {
+            loop_count = cpu_pit_loop(1193);
+            if (loop_count == 0) loop_count = 1;
+            mhz = (loop_count + 49UL) / 100UL;
+        }
+    }
     if (mhz > 999) mhz = 999;
     if (mhz == 0)  mhz = 1;
     hw->cpu_mhz = (u16)mhz;

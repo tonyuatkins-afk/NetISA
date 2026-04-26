@@ -354,6 +354,68 @@ void cpu_cpuid(u32 leaf, u32 *eax_out, u32 *ebx_out, u32 *ecx_out, u32 *edx_out)
     if (edx_out) *edx_out = 0;
 }
 
+/* RDTSC reads CPU's 64-bit time-stamp counter into EDX:EAX. We only need the
+ * low 32 bits since a 1ms gate at any reasonable CPU speed (up to ~4 GHz)
+ * fits in u32. cpu_rdtsc_mhz below uses this to time a known 1ms PIT
+ * interval; cycles / 1000 us = MHz directly, no ISA-bus-bound loop math.
+ * Pentium+ only (rejects on 486 and older). Caller must check cpu_has_cpuid
+ * (or otherwise know it is on a 586+) before calling. */
+extern u32 cpu_rdtsc_lo32(void);
+#pragma aux cpu_rdtsc_lo32 = \
+    ".586"           \
+    "rdtsc"          \
+    "mov  edx, eax"  \
+    "shr  edx, 16"   \
+    value  [dx ax]   \
+    modify [ax dx];
+
+/* Time RDTSC delta over a known 1 ms PIT gate. Returns MHz (cycles per
+ * microsecond, integer rounded). Pentium+ only.
+ *
+ * The PIT-bound spin between two RDTSC reads dominates the ~1ms wall clock,
+ * but RDTSC counts CPU cycles independent of the ISA port latency, so the
+ * returned value reflects true core clock. Replaces the legacy
+ * cpu_pit_loop+divide formula which underreported by ~14x on Pentium-class
+ * iron because the loop body's `inp(0x61)` was the bottleneck at ~1us per
+ * iteration regardless of CPU speed (cf. Toshiba 320CDT @ 233 MHz reporting
+ * as 17 MHz, 2026-04-25). */
+u32 cpu_rdtsc_mhz(void)
+{
+    u32 t0, t1, safety;
+    u8  saved_b1;
+
+    saved_b1 = (u8)inp(0x61);
+    outp(0x61, (saved_b1 & 0xFC) | 0x01);
+
+    /* Channel 2, mode 0 (interrupt on count), binary, LSB then MSB.
+     * 1193 PIT ticks at 1.193 MHz input = ~1000 microseconds. */
+    outp(0x43, 0xB0);
+    outp(0x42, (u8)(1193 & 0xFF));
+    outp(0x42, (u8)((1193 >> 8) & 0xFF));
+
+    /* Spin until PIT OUT2 goes high (count expired) or safety counter
+     * exhausted. Some chipsets / BIOS configurations leave PIT ch2 gated
+     * off or route OUT2 elsewhere, in which case bit 0x20 of port 0x61
+     * never sets and a naked spin would hang TESTDET (verified on Toshiba
+     * 320CDT, 2026-04-25). The safety counter caps the wait at ~10ms of
+     * port reads regardless of CPU speed. On timeout we return 0 so the
+     * caller falls back to the older PIT-loop estimator. */
+    t0 = cpu_rdtsc_lo32();
+    safety = 0;
+    while ((inp(0x61) & 0x20) == 0) {
+        if (++safety > 0x00100000UL) {
+            outp(0x61, saved_b1);
+            return 0;
+        }
+    }
+    t1 = cpu_rdtsc_lo32();
+
+    outp(0x61, saved_b1);
+
+    /* Cycles per 1000 us = MHz. */
+    return (t1 - t0) / 1000UL;
+}
+
 /* PIT timing loop. We program PIT channel 2 to a one-shot at a known
  * interval, then count how many trips through a fixed inner loop happen
  * before the gate closes. The inner loop is two memory ops + a decrement so
