@@ -50,7 +50,26 @@ try {
     }
 
     if (Test-Path $OutFile) { Remove-Item $OutFile }
-    Compress-Archive -Path $files -DestinationPath $OutFile -CompressionLevel Optimal
+
+    # Compress-Archive flattens directory structure when given a list of file
+    # paths: data\TONE.WAV ends up as TONE.WAV at the zip root, breaking
+    # SMOKETST.BAT which expects data\TONE.WAV. Use the .NET ZipFile API so
+    # we control each entry's stored path explicitly.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::Open($OutFile, 'Create')
+    try {
+        foreach ($f in $files) {
+            $abs = Join-Path $root $f
+            # Normalize entry name to forward slashes; ZIP convention and
+            # PKUNZIP / Expand-Archive both accept it.
+            $entryName = $f -replace '\\', '/'
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $zip, $abs, $entryName,
+                [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+        }
+    } finally {
+        $zip.Dispose()
+    }
 
     $bytes = (Get-Item $OutFile).Length
     Write-Host ("Bundled {0} files into {1} ({2:N0} bytes)" -f $files.Count, $OutFile, $bytes)
