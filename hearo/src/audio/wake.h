@@ -66,4 +66,8 @@ void wake_register_all(void);
  * applied, proceed and let the chip's behavior speak for itself"). */
 hbool wake_chip(const hw_profile_t *hw);
 
+/* Built-in backends, defined in their own .c files. Listed here so the
+ * registry has visibility without each file re-declaring the extern. */
+extern const wake_backend_t opl3sa3_wake_backend;
+
 #endif

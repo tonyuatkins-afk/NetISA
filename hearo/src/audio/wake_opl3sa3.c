@@ -24,21 +24,32 @@
  * mirrors what Linux's sound/isa/opl3sa2.c does, written from scratch
  * with no copied code.
  *
- * IRQ and DMA route values (registers 0x03 and 0x06) are hardcoded for
- * the canonical SB Pro 2 default (IRQ 5 / DMA 1). The chip's internal
- * routing is independent of physical IRQ wiring, but the first-cut
- * encoding here may not match systems that have remapped IRQ-A to a
- * different physical line. Iron testing on the 320CDT (primary target)
- * uses IRQ 5 / DMA 1 so the hardcoded values fit; remapping is future
- * work.
+ * IRQ and DMA route values (registers 0x03 and 0x06) are pin-routing
+ * matrices, not encoded IRQ numbers. Per the YMF715E datasheet (May 1997
+ * preliminary, bitsavers YMF713E_199705.pdf section 9-1-5):
  *
- * PnP BIOS scan and ISA-PnP isolation are listed in the research dossier
- * as more reliable discovery methods. The port-probe fallback covers the
- * Toshiba 320CDT case; PnP BIOS scan is left as follow-up work.
+ *   Register 0x03: each bit selects whether one of four interrupt
+ *   sources (WSS, SB, MPU401, OPL3) is steered to physical pin IRQ-A
+ *   or IRQ-B. Low nibble = IRQ-A, high nibble = IRQ-B.
+ *     bit 0 WSS-A  bit 1 SB-A   bit 2 MPU-A  bit 3 OPL3-A
+ *     bit 4 WSS-B  bit 5 SB-B   bit 6 MPU-B  bit 7 OPL3-B
+ *
+ *   Register 0x06: same shape for three DMA-using blocks.
+ *     bit 0 WSS-Playback-A    bit 1 WSS-Recording-A    bit 2 SB-A
+ *     bit 4 WSS-Playback-B    bit 5 WSS-Recording-B    bit 6 SB-B
+ *
+ * The actual ISA IRQ number bound to pin IRQ-A and the DMA channel bound
+ * to pin DMA-A are programmed via PnP Logical Device 0 registers 70h and
+ * 74h (and 72h / 75h for IRQ-B / DMA-B). This wake step does NOT touch
+ * those PnP registers: it relies on the BIOS having enumerated the chip
+ * and bound IRQ-A to ISA IRQ 5 and DMA-A to DMA 1 during boot. On the
+ * Toshiba 320CDT and most YMF715-equipped laptops this is the post-BIOS
+ * default. Adding our own PnP isolation + register write is follow-up
+ * work; if iron testing reveals a system where the BIOS leaves IRQ-A
+ * unbound after Win9x VxD unload, that's the trigger to implement it.
  */
 #include "wake.h"
 #include <conio.h>
-#include <stdio.h>
 
 /* Control-register access. Index port at base+0, data port at base+1. */
 #define OSA_REG_PM_CTRL    0x01  /* power management control */
@@ -157,20 +168,29 @@ static hbool opl3sa3_wake(const hw_profile_t *hw)
     osa_write(g_base, OSA_REG_DPD,       0x00);  /* clear all digital PD */
     osa_write(g_base, OSA_REG_APD,       0x00);  /* clear all analog PD (SB DAC) */
     osa_write(g_base, OSA_REG_SYS_CTRL,  0x00);  /* AT bus, DSP 3.01 (SB Pro 2) */
-    /* IRQ_ROUTE 0x0A = both OPL3 and SB to IRQ-A. The chip's IRQ-A is
-     * wired to physical IRQ 5 on the canonical Toshiba 320CDT layout,
-     * which is also the SB Pro 2 default. Boards that have remapped
-     * IRQ-A to a different line will need a remapping step we do not
-     * implement here. */
+    /* IRQ_ROUTE 0x0A: routing matrix not an encoded IRQ number. Sets
+     * bits 1 (SB-A) and 3 (OPL3-A), routing the SB DSP and OPL3 FM
+     * sources to physical pin IRQ-A. The pin->ISA-IRQ binding is
+     * external (PnP register 70h, BIOS-programmed). 0x0A leaves WSS
+     * and MPU401 unrouted; if either is needed simultaneously, set
+     * bit 0 (WSS-A) or bit 2 (MPU-A). */
     osa_write(g_base, OSA_REG_IRQ_ROUTE, 0x0A);
-    /* DMA_ROUTE 0x04 = SB to DMA-A. Same wiring assumption: DMA-A is
-     * the canonical DMA 1. */
+    /* DMA_ROUTE 0x04: bit 2 (SB-A) only. Routes the SB DSP DMA channel
+     * to pin DMA-A. WSS playback (bit 0) and WSS recording (bit 1)
+     * stay unrouted because we use the SB-compatible engine, not WSS.
+     * Pin->channel binding is via PnP register 74h. */
     osa_write(g_base, OSA_REG_DMA_ROUTE, 0x04);
-    /* MISC: VEN bit set, chip ID code as YMF715B (3) for compatibility
-     * with downstream code that fingerprints the variant. */
+    /* MISC 0x83: VEN bit (D7) | YMF715B variant code (D2:D0 = 011b = 3
+     * per the Linux ALSA driver's chip-ID table). The variant code is
+     * informational; downstream HEARO code does not currently
+     * fingerprint variants. */
     osa_write(g_base, OSA_REG_MISC,      0x83);
-    osa_write(g_base, OSA_REG_MASTER_L,  0x00);  /* L = 0 dB, unmuted */
-    osa_write(g_base, OSA_REG_MASTER_R,  0x00);  /* R = 0 dB, unmuted */
+    /* Master L/R 0x00: bit 7 (mute) clear AND attenuation bits 3:0 = 0
+     * (0 dB). Datasheet reset default is 0x07 (-14 dB unmuted) but the
+     * SB driver expects 0 dB on init so the mixer's master_volume is
+     * the only attenuation in the chain. */
+    osa_write(g_base, OSA_REG_MASTER_L,  0x00);
+    osa_write(g_base, OSA_REG_MASTER_R,  0x00);
     return HTRUE;
 }
 

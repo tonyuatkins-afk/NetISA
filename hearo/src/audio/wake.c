@@ -3,7 +3,6 @@
  * Copyright (c) 2026 Tony Atkins. MIT License.
  */
 #include "wake.h"
-#include <stdio.h>
 
 #define WAKE_MAX_BACKENDS 8
 
@@ -31,8 +30,6 @@ hbool wake_chip(const hw_profile_t *hw)
     }
     return HFALSE;
 }
-
-extern const wake_backend_t opl3sa3_wake_backend;
 
 void wake_register_all(void)
 {
