@@ -68,4 +68,14 @@ const audio_driver_t  *audiodrv_get_hardware_mixer(void);
 /* Registers the built-in drivers. Call once at start. */
 void                   audiodrv_register_all(void);
 
+/* PC speaker deferred-work pump. The pcspeaker driver's ISR no longer calls
+ * the mixer callback directly (it would starve the foreground for tens of
+ * ms per refill on a 386). Instead the ISR sets a refill_pending flag that
+ * the foreground main loop must drain by calling pc_pump regularly. Every
+ * ~25 ms is enough at the default 18 kHz / 1024-frame buffer. Safe to call
+ * when no PC speaker driver is active (no-op if nothing is pending).
+ * Other drivers (sb, gus, mpu401) do not need a pump; their ISRs do not
+ * call back into the mixer at all (sb) or render in hardware (gus). */
+void                   pc_pump(void);
+
 #endif

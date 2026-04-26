@@ -12,6 +12,7 @@
  */
 #include "audiodrv.h"
 #include <conio.h>
+#include <i86.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -46,15 +47,27 @@ static void wreg16(u8 reg, u16 v)
 
 static void poke_dram(u32 addr, u8 v)
 {
+    /* The five-port sequence (register select, low addr, register select,
+     * high addr, data) MUST NOT be split by an interrupt: the GF1 register
+     * select latch (port 0x103) is shared across reads and writes, so an
+     * IRQ handler that touches any GUS register between the address-low
+     * write and the data write leaves the chip pointing at the wrong
+     * register and our data byte lands at a random DRAM offset. cli for
+     * the duration. */
+    _disable();
     outp(G.base + 0x103, 0x43);
     outpw(G.base + 0x104, (u16)(addr & 0xFFFF));
     outp(G.base + 0x103, 0x44);
     outp(G.base + 0x105, (u8)(addr >> 16));
     outp(G.base + 0x107, v);
+    _enable();
 }
 
 static hbool g_init(const hw_profile_t *hw)
 {
+    /* Gp persists across init/shutdown cycles so audiodrv_auto_select can
+     * re-enter g_init (e.g. after a fallback to null and back) without
+     * leaking the previous allocation. memset clears state in place. */
     if (!Gp) Gp = (gus_state_t far *)malloc(sizeof(gus_state_t));
     if (!Gp) return HFALSE;
     memset(Gp, 0, sizeof(gus_state_t));

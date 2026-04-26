@@ -33,6 +33,10 @@ typedef struct {
     u8     active_channels;
     u32    output_rate;
     u8     output_format;
+    /* master_volume MUST stay u8: mixer_set_master writes it with a single
+     * byte store (atomic on x86) so the audio ISR's mixer_render can read it
+     * without a cli/sti bracket. Refactoring to u16 (or wider) requires
+     * wrapping mixer_set_master with _disable()/_enable(). */
     u8     master_volume;
     hbool  use_quire;
     quire_t quire_left;

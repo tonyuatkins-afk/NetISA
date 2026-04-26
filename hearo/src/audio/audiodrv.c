@@ -42,9 +42,27 @@ const audio_driver_t *audiodrv_find(const char *name)
     return 0;
 }
 
+/* Driver lifecycle contract:
+ *   1. audiodrv_register() adds the static descriptor to the table.
+ *   2. audiodrv_set_active() makes a registered driver the current one.
+ *      If a different driver was previously active, its shutdown() runs
+ *      first to release IRQ vectors, DMA channels, and DSP state.
+ *   3. After set_active, the caller must call drv->init() before drv->open().
+ *      audiodrv_auto_select handles this for the auto-pick path; manual
+ *      callers MUST call init themselves. set_active does NOT init for
+ *      them because the hw_profile_t may not be in scope at the call site.
+ *   4. open / close pairs may repeat any number of times after init.
+ *   5. shutdown() is the terminator and is safe to call multiple times.
+ *      A subsequent open() requires a fresh init().
+ *
+ * Re-activating a driver that was previously shutdown REQUIRES re-init:
+ *   set_active(drvA);  drvA->init(hw);  drvA->open(...);  drvA->close();
+ *   set_active(drvB);  // calls drvA->shutdown internally
+ *   set_active(drvA);  drvA->init(hw);  // MUST re-init
+ */
 hbool audiodrv_set_active(const audio_driver_t *drv)
 {
-    if (active && active->shutdown) active->shutdown();
+    if (active && active != drv && active->shutdown) active->shutdown();
     active = drv;
     return active ? HTRUE : HFALSE;
 }
@@ -67,6 +85,14 @@ hbool audiodrv_auto_select(const hw_profile_t *hw)
     const audio_driver_t *pick = 0;
 
     audiodrv_register_all();
+
+    /* Re-running auto-select on a hot system (config-changed reselect, hot
+     * unplug fallback) must shut down the previously active driver first.
+     * Otherwise its ISR vector + DMA channel + DSP state remain hooked
+     * while we init a new driver against the same IRQ/DMA/PIC slots, which
+     * leaves two ISRs racing on one PIC line. */
+    if (active && active->shutdown) active->shutdown();
+    active = 0;
 
     /* SB is preferred as the audio output target because it has a working
      * ISR/DMA path that drives sequencer timing for all decoders. GUS is

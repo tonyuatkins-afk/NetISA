@@ -8,16 +8,19 @@
 
 static u16 mpu_base = 0x330;
 
+/* Watcom 16-bit int is signed; 0xFFFF as int is -1, so the previous
+ * `int t = 0xFFFF; return t > 0` always returned FALSE and the entire
+ * MPU-401 init silently failed. Use unsigned. */
 static hbool mpu_wait_write(u16 base)
 {
-    int t = 0xFFFF;
+    unsigned int t = 0xFFFF;
     while ((inp(base + 1) & 0x40) && --t) ;
     return t > 0;
 }
 
 static hbool mpu_wait_read(u16 base)
 {
-    int t = 0xFFFF;
+    unsigned int t = 0xFFFF;
     while ((inp(base + 1) & 0x80) && --t) ;
     return t > 0;
 }
