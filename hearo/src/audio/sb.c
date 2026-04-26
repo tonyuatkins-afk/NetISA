@@ -24,6 +24,7 @@
 
 #include "audiodrv.h"
 #include "dma.h"
+#include "wake.h"
 #include "../detect/audio.h"
 #include <conio.h>
 #include <dos.h>
@@ -354,6 +355,17 @@ static hbool sb_init(const hw_profile_t *hw)
      * default); accept only those, plus IRQ 4 and IRQ 8 which appear in
      * some clone BLASTER configs. */
     if (S.irq >= 16 || S.irq < 3 || S.irq == 6) return HFALSE;
+
+    /* Wake step. Some chips that report SB-compatible respond to DSP
+     * version queries but stay PCM-gated until vendor-specific control
+     * registers are touched (notably the Yamaha YMF715 OPL3-SAx in pure
+     * MS-DOS mode with its SBPDR bit set). The wake registry iterates
+     * any registered backends; the first one that claims the chip via
+     * probe() runs its wake(). HFALSE return is normal on real Creative
+     * hardware (no backend claims the chip) and the dsp_reset below
+     * proceeds as before. */
+    (void)wake_chip(hw);
+
     if (!dsp_reset(S.base)) return HFALSE;
     /* If the detect layer did not pre-fill the version, query the chip.
      * A timeout here leaves dsp_major / dsp_minor at zero which gates the

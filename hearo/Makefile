@@ -64,6 +64,7 @@ SRCS = &
     $(SRC_DIR)\audio\audiodrv.c &
     $(SRC_DIR)\audio\dma.c &
     $(SRC_DIR)\audio\mixer.c &
+    $(SRC_DIR)\audio\wake.c &
     $(SRC_DIR)\audio\sb.c &
     $(SRC_DIR)\audio\gus.c &
     $(SRC_DIR)\audio\adlib.c &
@@ -118,6 +119,7 @@ LIB_OBJS = &
     $(OBJ_DIR)\audiodrv.obj &
     $(OBJ_DIR)\dma.obj &
     $(OBJ_DIR)\mixer.obj &
+    $(OBJ_DIR)\wake.obj &
     $(OBJ_DIR)\sb.obj &
     $(OBJ_DIR)\gus.obj &
     $(OBJ_DIR)\adlib.obj &
@@ -188,6 +190,7 @@ $(OBJ_DIR)\io.obj:           $(SRC_DIR)\platform\io.c       ;  $(CC16) $(CF16) $
 $(OBJ_DIR)\audiodrv.obj:     $(SRC_DIR)\audio\audiodrv.c    ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\dma.obj:          $(SRC_DIR)\audio\dma.c         ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\mixer.obj:        $(SRC_DIR)\audio\mixer.c       ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\wake.obj:         $(SRC_DIR)\audio\wake.c        ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\sb.obj:           $(SRC_DIR)\audio\sb.c          ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\gus.obj:          $(SRC_DIR)\audio\gus.c         ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\adlib.obj:        $(SRC_DIR)\audio\adlib.c       ;  $(CC16) $(CF16) $< -fo=$@

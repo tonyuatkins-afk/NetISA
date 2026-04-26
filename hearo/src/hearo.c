@@ -22,6 +22,7 @@
 #include "stub/netisa_stub.h"
 #include "audio/audiodrv.h"
 #include "audio/mixer.h"
+#include "audio/wake.h"
 #include "platform/dos.h"
 
 #include <dos.h>      /* _harderr, _HARDERR_FAIL */
@@ -152,7 +153,13 @@ int main(int argc, char *argv[])
 
     /* Bring the audio engine up before the UI so the now-playing pane has a
      * valid driver to talk to.  audiodrv_auto_select falls back to the null
-     * driver if nothing else opens, so failure here is non-fatal. */
+     * driver if nothing else opens, so failure here is non-fatal.
+     *
+     * wake_register_all must happen before audiodrv_auto_select because
+     * sb_init runs the wake layer before its DSP reset; an unregistered
+     * wake registry yields the same behavior as before this phase, so
+     * order independence on real Creative hardware is preserved. */
+    wake_register_all();
     audiodrv_register_all();
     audiodrv_auto_select(&hw);
     mixer_init(22050UL, AFMT_S16_STEREO, hw.fpu_type != FPU_NONE);
