@@ -32,9 +32,12 @@ hbool wake_chip(const hw_profile_t *hw)
     return HFALSE;
 }
 
+extern const wake_backend_t opl3sa3_wake_backend;
+
 void wake_register_all(void)
 {
     /* Each Phase 3.x backend adds its wake_register call here. Order
      * matters: more specific backends (vendor-keyed registers, multi-
      * byte fingerprints) ahead of generic catch-alls. */
+    wake_register(&opl3sa3_wake_backend);
 }

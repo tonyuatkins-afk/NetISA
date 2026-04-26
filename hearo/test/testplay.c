@@ -13,6 +13,7 @@
 #include "../src/detect/detect.h"
 #include "../src/audio/audiodrv.h"
 #include "../src/audio/mixer.h"
+#include "../src/audio/wake.h"
 #include "../src/decode/decode.h"
 #include "../src/platform/dos.h"
 #include "../src/platform/timer.h"
@@ -138,6 +139,14 @@ int main(int argc, char *argv[])
         return 2;
     }
     printf("Loaded: %s\n", song->title[0] ? song->title : filename);
+
+    /* Register wake backends BEFORE audiodrv_auto_select so sb_init's
+     * wake_chip call sees them. Without this, iron testing on a chip
+     * that needs vendor pre-init (notably YMF715 OPL3-SAx on the
+     * Toshiba 320CDT) goes through TESTPLAY without the wake step
+     * and stalls after one half-block. Same call lives in main()
+     * for the HEARO.EXE path. */
+    wake_register_all();
 
     printf("[trace] audiodrv_auto_select\n");
     if (!audiodrv_auto_select(&hw)) {
