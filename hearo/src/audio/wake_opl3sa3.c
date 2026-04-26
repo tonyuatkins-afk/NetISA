@@ -50,6 +50,7 @@
  */
 #include "wake.h"
 #include <conio.h>
+#include <stdio.h>
 
 /* Control-register access. Index port at base+0, data port at base+1. */
 #define OSA_REG_PM_CTRL    0x01  /* power management control */
@@ -133,7 +134,18 @@ static hbool opl3sa3_probe(void)
      * 0x100 is second because Toshiba laptops (the primary target) use
      * 0x100 more often than 0x370 in practice, but a 320CDT could go
      * either way and the order does not matter beyond detection latency
-     * (a few microseconds per miss). */
+     * (a few microseconds per miss).
+     *
+     * Note: 0x370 is also the standard LPT3 data port. On systems where
+     * a parallel port is mapped there, our MISC probe writes 0x371 (the
+     * status port, read-only on a printer). The write is typically a
+     * no-op on the ISA bus and the toggle-then-readback fails to round-
+     * trip, so misc_validate returns HFALSE and we move on. On chipsets
+     * that aliased these ports differently, a brief printer-data-line
+     * toggle is theoretically observable. The 320CDT (primary target)
+     * has no LPT3, so this is safe there. Iron-test plan: confirm on
+     * boards with LPT3, and add a BIOS-LPT skip if iron testing surfaces
+     * an issue. */
     static const u16 candidates[] = { 0x370, 0x100, 0x538, 0xE80, 0xF86, 0 };
     u16 i;
     u8  variant = 0;
@@ -191,6 +203,13 @@ static hbool opl3sa3_wake(const hw_profile_t *hw)
      * the only attenuation in the chain. */
     osa_write(g_base, OSA_REG_MASTER_L,  0x00);
     osa_write(g_base, OSA_REG_MASTER_R,  0x00);
+    /* Trace line for iron-test triage: which base did we match, and
+     * which variant. On a system where audio fails after wake, the
+     * absence of this line proves the probe never matched (so the
+     * issue is base discovery); presence proves we wrote the init
+     * sequence (so the issue is post-wake, e.g. PnP pin binding). */
+    printf("[wake] OPL3-SA3 woken at base 0x%X, variant %u\n",
+           (unsigned)g_base, (unsigned)g_variant);
     return HTRUE;
 }
 

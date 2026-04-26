@@ -53,7 +53,13 @@
 #define BUF_REFERENCE_RATE   22050UL
 #define BUF_REFERENCE_FRAMES 2048
 #define BUF_MIN_FRAMES         256   /* below this IRQ rate exceeds 30 Hz/half */
-#define BUF_MAX_FRAMES        8192   /* keeps total bytes inside dma_alloc cap */
+#define BUF_MAX_FRAMES        8192   /* sized so total bytes (8192 * BUF_HALVES * frame_bytes)
+                                      * stays inside the 8237 page boundary in every format:
+                                      *   stereo s16 (4 B/frame, 16-bit DMA, 128K boundary)
+                                      *   stereo u8  (2 B/frame, 8-bit DMA,  64K boundary)
+                                      *   mono u8    (1 B/frame, 8-bit DMA,  64K boundary)
+                                      * The tightest is stereo u8: 8192 * 2 * 2 = 32 KB,
+                                      * half of the 64K cap. Comfortable margin. */
 
 typedef struct {
     u16 base;

@@ -33,6 +33,13 @@ hbool wake_chip(const hw_profile_t *hw)
 
 void wake_register_all(void)
 {
+    /* Idempotent: HEARO.EXE's main and TESTPLAY.EXE's main both call
+     * this. Calling it twice would double-register every backend and
+     * make probes run twice. */
+    static u8 registered = 0;
+    if (registered) return;
+    registered = 1;
+
     /* Each Phase 3.x backend adds its wake_register call here. Order
      * matters: more specific backends (vendor-keyed registers, multi-
      * byte fingerprints) ahead of generic catch-alls. */

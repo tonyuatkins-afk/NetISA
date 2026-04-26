@@ -37,11 +37,18 @@ hbool dos_mcb_validate(void)
      * structures) in ES:BX. The head of the MCB chain lives in the u16
      * immediately preceding the LoL: ES:[BX-2]. The location is officially
      * undocumented but stable from DOS 3.x through 7.x and is the same
-     * lookup used by every memory utility (MEM, CHKDSK, etc.). */
+     * lookup used by every memory utility (MEM, CHKDSK, etc.).
+     *
+     * Guard r.x.bx >= 2 before the BX-2 subtraction. A bogus return
+     * with bx in {0, 1} would underflow to offset 0xFFFE/0xFFFF inside
+     * the LoL segment and read whatever bytes happen to be there. The
+     * head-segment range check below catches that, but failing the
+     * walk earlier is cheaper. */
     memset(&r, 0, sizeof(r));
     memset(&sr, 0, sizeof(sr));
     r.h.ah = 0x52;
     int86x(0x21, &r, &r, &sr);
+    if (r.x.bx < 2) return HFALSE;
     {
         u16 far *head = (u16 far *)MK_FP(sr.es, (u16)(r.x.bx - 2));
         first_mcb_seg = *head;
