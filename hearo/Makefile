@@ -58,7 +58,26 @@ SRCS = &
     $(SRC_DIR)\stub\netisa_stub.c &
     $(SRC_DIR)\platform\dos.c &
     $(SRC_DIR)\platform\timer.c &
-    $(SRC_DIR)\platform\probes.c
+    $(SRC_DIR)\platform\probes.c &
+    $(SRC_DIR)\platform\io.c &
+    $(SRC_DIR)\audio\audiodrv.c &
+    $(SRC_DIR)\audio\dma.c &
+    $(SRC_DIR)\audio\mixer.c &
+    $(SRC_DIR)\audio\sb.c &
+    $(SRC_DIR)\audio\gus.c &
+    $(SRC_DIR)\audio\adlib.c &
+    $(SRC_DIR)\audio\mpu401.c &
+    $(SRC_DIR)\audio\pcspeaker.c &
+    $(SRC_DIR)\audio\nulldrv.c &
+    $(SRC_DIR)\decode\decode.c &
+    $(SRC_DIR)\decode\wav.c &
+    $(SRC_DIR)\decode\mod.c &
+    $(SRC_DIR)\decode\s3m.c &
+    $(SRC_DIR)\decode\xm.c &
+    $(SRC_DIR)\decode\it.c &
+    $(SRC_DIR)\decode\midi.c &
+    $(SRC_DIR)\decode\midifm.c &
+    $(SRC_DIR)\decode\vgm.c
 
 # LIB_OBJS = everything except hearo.obj (which has main()). Test programs link
 # their own main with LIB_OBJS; HEARO.EXE adds hearo.obj on top.
@@ -92,7 +111,26 @@ LIB_OBJS = &
     $(OBJ_DIR)\netisa_stub.obj &
     $(OBJ_DIR)\dos.obj &
     $(OBJ_DIR)\timer.obj &
-    $(OBJ_DIR)\probes.obj
+    $(OBJ_DIR)\probes.obj &
+    $(OBJ_DIR)\io.obj &
+    $(OBJ_DIR)\audiodrv.obj &
+    $(OBJ_DIR)\dma.obj &
+    $(OBJ_DIR)\mixer.obj &
+    $(OBJ_DIR)\sb.obj &
+    $(OBJ_DIR)\gus.obj &
+    $(OBJ_DIR)\adlib.obj &
+    $(OBJ_DIR)\mpu401.obj &
+    $(OBJ_DIR)\pcspeaker.obj &
+    $(OBJ_DIR)\nulldrv.obj &
+    $(OBJ_DIR)\decode.obj &
+    $(OBJ_DIR)\wav.obj &
+    $(OBJ_DIR)\mod.obj &
+    $(OBJ_DIR)\s3m.obj &
+    $(OBJ_DIR)\xm.obj &
+    $(OBJ_DIR)\it.obj &
+    $(OBJ_DIR)\midi.obj &
+    $(OBJ_DIR)\midifm.obj &
+    $(OBJ_DIR)\vgm.obj
 
 .BEFORE
     @if not exist $(OBJ_DIR) mkdir $(OBJ_DIR)
@@ -143,9 +181,28 @@ $(OBJ_DIR)\netisa_stub.obj:  $(SRC_DIR)\stub\netisa_stub.c  ;  $(CC16) $(CF16) $
 $(OBJ_DIR)\dos.obj:          $(SRC_DIR)\platform\dos.c      ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\timer.obj:        $(SRC_DIR)\platform\timer.c    ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\probes.obj:       $(SRC_DIR)\platform\probes.c   ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\io.obj:           $(SRC_DIR)\platform\io.c       ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\audiodrv.obj:     $(SRC_DIR)\audio\audiodrv.c    ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\dma.obj:          $(SRC_DIR)\audio\dma.c         ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\mixer.obj:        $(SRC_DIR)\audio\mixer.c       ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\sb.obj:           $(SRC_DIR)\audio\sb.c          ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\gus.obj:          $(SRC_DIR)\audio\gus.c         ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\adlib.obj:        $(SRC_DIR)\audio\adlib.c       ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\mpu401.obj:       $(SRC_DIR)\audio\mpu401.c      ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\pcspeaker.obj:    $(SRC_DIR)\audio\pcspeaker.c   ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\nulldrv.obj:      $(SRC_DIR)\audio\nulldrv.c     ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\decode.obj:       $(SRC_DIR)\decode\decode.c     ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\wav.obj:          $(SRC_DIR)\decode\wav.c        ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\mod.obj:          $(SRC_DIR)\decode\mod.c        ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\s3m.obj:          $(SRC_DIR)\decode\s3m.c        ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\xm.obj:           $(SRC_DIR)\decode\xm.c         ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\it.obj:           $(SRC_DIR)\decode\it.c         ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\midi.obj:         $(SRC_DIR)\decode\midi.c       ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\midifm.obj:       $(SRC_DIR)\decode\midifm.c     ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\vgm.obj:          $(SRC_DIR)\decode\vgm.c        ;  $(CC16) $(CF16) $< -fo=$@
 
 # Test programs
-tests: TESTDET.EXE TESTBOOT.EXE TESTCORD.EXE TESTQUIR.EXE TESTBIP.EXE TESTUI.EXE .SYMBOLIC
+tests: TESTDET.EXE TESTBOOT.EXE TESTCORD.EXE TESTQUIR.EXE TESTBIP.EXE TESTUI.EXE TESTPLAY.EXE .SYMBOLIC
 
 TESTDET.EXE: test\testdet.c $(LIB_OBJS)
     $(CC16) $(CF16) test\testdet.c -fo=$(OBJ_DIR)\testdet.obj
@@ -170,6 +227,10 @@ TESTBIP.EXE: test\testbip.c $(OBJ_DIR)\bipartite.obj $(OBJ_DIR)\tables.obj
 TESTUI.EXE: test\testui.c $(LIB_OBJS)
     $(CC16) $(CF16) test\testui.c -fo=$(OBJ_DIR)\testui.obj
     $(LINK) system dos name TESTUI file { $(OBJ_DIR)\testui.obj $(LIB_OBJS) }
+
+TESTPLAY.EXE: test\testplay.c $(LIB_OBJS)
+    $(CC16) $(CF16) test\testplay.c -fo=$(OBJ_DIR)\testplay.obj
+    $(LINK) system dos name TESTPLAY file { $(OBJ_DIR)\testplay.obj $(LIB_OBJS) }
 
 clean: .SYMBOLIC
     @if exist $(OBJ_DIR)\*.obj del /q $(OBJ_DIR)\*.obj

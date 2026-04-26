@@ -19,6 +19,8 @@
 #include "config/config.h"
 #include "config/cmdline.h"
 #include "stub/netisa_stub.h"
+#include "audio/audiodrv.h"
+#include "audio/mixer.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -84,7 +86,17 @@ int main(int argc, char *argv[])
     hall_save("HEARO.HAL");
     config_save("HEARO.CFG");
 
+    /* Bring the audio engine up before the UI so the now-playing pane has a
+     * valid driver to talk to.  audiodrv_auto_select falls back to the null
+     * driver if nothing else opens, so failure here is non-fatal. */
+    audiodrv_register_all();
+    audiodrv_auto_select(&hw);
+    mixer_init(22050UL, AFMT_S16_STEREO, hw.fpu_type != FPU_NONE);
+
     ui_run(&hw);
+
+    if (audiodrv_active() && audiodrv_active()->shutdown)
+        audiodrv_active()->shutdown();
 
     return 0;
 }
