@@ -27,6 +27,7 @@
 #include <conio.h>
 #include <dos.h>
 #include <i86.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* ===== 1. Audio probe primitives ===== */
@@ -503,10 +504,23 @@ int fpu_iit_probe(void)
 
 /* Cyrix FasMath detect: CCR3 at index 0xC3 of port 22h/23h. Cyrix CCRs are
  * write-protected with a magic key sequence. On a real Cyrix part, writing
- * the unlock then reading CCR3 returns a non-FF value. */
+ * the unlock then reading CCR3 returns a non-FF value.
+ *
+ * Opt-in via HEARO_CYRIX env var. Writing to port 0x22 has side effects on
+ * chipsets that decode it differently: some Intel PIIX-family and VIA
+ * chipsets map config or power-management registers in that range, and a
+ * blind 0xC3 write can disturb them. Real Cyrix FasMath / FasMath 387 chips
+ * are rare in 2026 and the result of this probe is consumed only as a
+ * cosmetic boot-screen brand string (hw->fpu_brand), so an unhardened blind
+ * probe trades a real side-effect risk for no functional gain.
+ *
+ * fpu_iit_probe (above) is already a stub returning 0 for related reasons,
+ * so the only paths that use this are explicit user opt-in. */
 int fpu_cyrix_probe(void)
 {
+    char *env = getenv("HEARO_CYRIX");
     u8 v;
+    if (!env || !env[0] || env[0] == '0') return 0;
     outp(0x22, 0xC3);
     v = (u8)inp(0x23);
     if (v == 0xFF || v == 0x00) return 0;
