@@ -39,7 +39,20 @@
 #define DSP_ACK16   0x0F
 
 #define BUF_HALVES         2
-#define DEFAULT_BUF_FRAMES 2048   /* per half */
+
+/* Half-buffer sizing scales linearly with playback rate to hold a roughly
+ * constant wall-clock time per half (~93 ms at the reference). Without this,
+ * a fixed 2048-frame half-buffer covers 46 ms at 44100 Hz, short enough that
+ * a 50 ms foreground hiccup (file IO, mixer cycle on a 386) underruns. At
+ * 11025 Hz the same fixed buffer covers 186 ms, well over what is needed
+ * and twice the memory required. Reference is 22050 Hz, the rate HEARO has
+ * been smoke-tested at most heavily in DOSBox-X SB16 stereo s16. Pattern is
+ * the same shape as Mpxplay MDma_get_max_pcmoutbufsize (DMAIRQ.C:87) but
+ * pegged in frames at HEARO's nominal rate; independent implementation. */
+#define BUF_REFERENCE_RATE   22050UL
+#define BUF_REFERENCE_FRAMES 2048
+#define BUF_MIN_FRAMES         256   /* below this IRQ rate exceeds 30 Hz/half */
+#define BUF_MAX_FRAMES        8192   /* keeps total bytes inside dma_alloc cap */
 
 typedef struct {
     u16 base;
@@ -472,7 +485,17 @@ static hbool sb_open(u32 rate, u8 format, audio_callback_t cb)
     S.rate = rate;
     S.format = format;
     S.cb = cb;
-    S.half_frames = DEFAULT_BUF_FRAMES;
+    {
+        /* Scale frames-per-half by rate / reference. Clamp on both sides:
+         * floor keeps IRQ cadence under the mixer's render budget; ceiling
+         * keeps total buffer (half_frames * BUF_HALVES * frame_bytes) below
+         * dma_alloc's 64K boundary even for stereo s16 at the highest rates
+         * the SB16 will accept (48 kHz). */
+        u32 scaled = ((u32)BUF_REFERENCE_FRAMES * rate) / BUF_REFERENCE_RATE;
+        if (scaled < BUF_MIN_FRAMES) scaled = BUF_MIN_FRAMES;
+        if (scaled > BUF_MAX_FRAMES) scaled = BUF_MAX_FRAMES;
+        S.half_frames = (u16)scaled;
+    }
     frame_bytes = AFMT_FRAME_BYTES(format);
     S.half_bytes = S.half_frames * frame_bytes;
     total_frames = S.half_frames * BUF_HALVES;
