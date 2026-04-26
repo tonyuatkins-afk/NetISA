@@ -47,12 +47,21 @@ static void ctrl_break(int sig)
     exit(130);
 }
 
-/* Audio callback: ask decoder to advance the song, then mix into the buffer. */
+/* Audio callback: ask decoder to advance the song, then mix into the buffer.
+ *
+ * frames_rendered is incremented in BOTH the active and paused branches.
+ * The watchdog in main() interprets a stalled counter as "ISR not firing";
+ * not incrementing during pause meant a SPACE-paused player tripped the
+ * watchdog after 2 seconds and printed a misleading "audio ISR not firing"
+ * diagnostic, then bailed. The counter measures ISR firings (which still
+ * happen during pause: the chip keeps DMA-ing zeros), not song progress,
+ * so the increment belongs in both paths. */
 static void play_callback(void *buffer, u16 samples, u8 format)
 {
     if (paused) {
         memset(buffer, format >= AFMT_S16_MONO ? 0 : 0x80,
                (u32)samples * AFMT_FRAME_BYTES(format));
+        frames_rendered += samples;
         return;
     }
     decode_advance(song, samples);
