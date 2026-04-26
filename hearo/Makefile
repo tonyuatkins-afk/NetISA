@@ -49,6 +49,7 @@ SRCS = &
     $(SRC_DIR)\ui\settings.c &
     $(SRC_DIR)\ui\hallview.c &
     $(SRC_DIR)\ui\ui.c &
+    $(SRC_DIR)\ui\playback.c &
     $(SRC_DIR)\config\config.c &
     $(SRC_DIR)\config\cmdline.c &
     $(SRC_DIR)\math\cordic.c &
@@ -102,6 +103,7 @@ LIB_OBJS = &
     $(OBJ_DIR)\settings.obj &
     $(OBJ_DIR)\hallview.obj &
     $(OBJ_DIR)\ui.obj &
+    $(OBJ_DIR)\playback.obj &
     $(OBJ_DIR)\config.obj &
     $(OBJ_DIR)\cmdline.obj &
     $(OBJ_DIR)\cordic.obj &
@@ -171,6 +173,7 @@ $(OBJ_DIR)\spectrum.obj:     $(SRC_DIR)\ui\spectrum.c       ;  $(CC16) $(CF16) $
 $(OBJ_DIR)\settings.obj:     $(SRC_DIR)\ui\settings.c       ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\hallview.obj:     $(SRC_DIR)\ui\hallview.c       ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\ui.obj:           $(SRC_DIR)\ui\ui.c             ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\playback.obj:     $(SRC_DIR)\ui\playback.c       ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\config.obj:       $(SRC_DIR)\config\config.c     ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\cmdline.obj:      $(SRC_DIR)\config\cmdline.c    ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\cordic.obj:       $(SRC_DIR)\math\cordic.c       ;  $(CC16) $(CF16) $< -fo=$@

@@ -17,9 +17,11 @@
 #include "menu.h"
 #include "browser.h"
 #include "nowplay.h"
+#include "playback.h"
 #include "spectrum.h"
 #include "settings.h"
 #include "hallview.h"
+#include "../audio/audiodrv.h"
 #include "../platform/timer.h"
 #include "../detect/audio.h"
 #include "../detect/fpu.h"
@@ -149,11 +151,11 @@ static void open_menu(menu_id_t which)
             need_redraw = HTRUE;
             break;
         case MA_PLAY_PAUSE:
-            nowplay_set_state(nowplay_state() == NP_PLAYING ? NP_PAUSED : NP_PLAYING);
+            playback_toggle_pause();
             need_redraw = HTRUE;
             break;
         case MA_STOP:
-            nowplay_set_state(NP_STOPPED);
+            playback_stop();
             need_redraw = HTRUE;
             break;
         default:
@@ -182,6 +184,16 @@ void ui_run(const hw_profile_t *hw)
 
     while (!quit) {
         u32 now;
+
+        /* Run the PC speaker deferred-work pump every iteration. No-op when
+         * SB / GUS / null is the active driver, but on PC speaker the
+         * foreground must drain refill_pending or the chip starves between
+         * IRQ ticks. Also runs after the redraw block below as belt-and-
+         * braces: a heavy redraw can block long enough that one or more
+         * refills accumulate. Pattern from the Mpxplay-comparison main-loop
+         * recommendation in docs/research/. */
+        pc_pump();
+
         if (need_redraw) {
             redraw_all();
             need_redraw = HFALSE;
@@ -194,6 +206,9 @@ void ui_run(const hw_profile_t *hw)
                             (u8)(scr_rows() - (scr_rows() / 2 + 1) - 1));
             last_spectrum_step_ms = now;
         }
+
+        pc_pump();
+
         if (!scr_keypending()) continue;
 
         {
@@ -207,7 +222,7 @@ void ui_run(const hw_profile_t *hw)
             if (key == KEY_F2)  { settings_panel_show(hw); need_redraw = HTRUE; continue; }
             if (key == KEY_F10) { hallview_show(hw);       need_redraw = HTRUE; continue; }
             if (key == KEY_SPACE) {
-                nowplay_set_state(nowplay_state() == NP_PLAYING ? NP_PAUSED : NP_PLAYING);
+                playback_toggle_pause();
                 need_redraw = HTRUE; continue;
             }
             a = menu_from_key(key);
@@ -215,6 +230,18 @@ void ui_run(const hw_profile_t *hw)
             if (a == MA_EXIT) { quit = HTRUE; break; }
 
             if (focus == UI_FOCUS_BROWSER) {
+                /* Intercept ENTER on a file: browser_handle_key returns HTRUE
+                 * but does nothing for non-directory entries, so we own the
+                 * file-launch path here. Directories still go through
+                 * browser_handle_key for the chdir + reload sequence. */
+                if (key == KEY_ENTER && !browser_selected_is_dir()) {
+                    const char *fname = browser_selected_filename();
+                    if (fname && fname[0]) {
+                        playback_start_file(fname);
+                    }
+                    need_redraw = HTRUE;
+                    continue;
+                }
                 if (browser_handle_key(key)) need_redraw = HTRUE;
             }
             if (key == KEY_ESC) { quit = HTRUE; break; }

@@ -16,6 +16,7 @@
 #include "ui/screen.h"
 #include "ui/hallview.h"
 #include "ui/settings.h"
+#include "ui/playback.h"
 #include "config/config.h"
 #include "config/cmdline.h"
 #include "stub/netisa_stub.h"
@@ -92,8 +93,16 @@ int main(int argc, char *argv[])
     audiodrv_register_all();
     audiodrv_auto_select(&hw);
     mixer_init(22050UL, AFMT_S16_STEREO, hw.fpu_type != FPU_NONE);
+    playback_init(22050UL, AFMT_S16_STEREO);
 
     ui_run(&hw);
+
+    /* Close any in-flight track via the playback module so the driver
+     * close path runs before the unconditional shutdown below. The two
+     * are not strictly redundant: shutdown is a one-shot, while close
+     * is the per-session teardown that the chunk-A sb_close hardening
+     * sequences correctly against a wedged chip. */
+    playback_stop();
 
     if (audiodrv_active() && audiodrv_active()->shutdown)
         audiodrv_active()->shutdown();

@@ -202,3 +202,7 @@ const char *browser_selected_filename(void)
 {
     return (selected < entry_count) ? entries[selected].name : "";
 }
+hbool browser_selected_is_dir(void)
+{
+    return (selected < entry_count) ? entries[selected].is_dir : HFALSE;
+}
