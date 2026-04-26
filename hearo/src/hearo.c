@@ -22,6 +22,7 @@
 #include "stub/netisa_stub.h"
 #include "audio/audiodrv.h"
 #include "audio/mixer.h"
+#include "platform/dos.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -106,6 +107,20 @@ int main(int argc, char *argv[])
 
     if (audiodrv_active() && audiodrv_active()->shutdown)
         audiodrv_active()->shutdown();
+
+    /* MCB chain integrity check. A stuck DMA cycle that wrote past a
+     * freed buffer's MCB will usually leave the chain with a corrupt
+     * 'M' / 'Z' signature byte. Surface that as a diagnostic before
+     * COMMAND.COM panics with "Memory allocation error" and the user
+     * blames DOS for what was actually our DREQ leak. The chain SHOULD
+     * be intact at this point: chunk-A sb_close already does
+     * dma_disable + dma_wait_quiescent before dma_free. */
+    if (!dos_mcb_validate()) {
+        fprintf(stderr,
+                "WARNING: DOS MCB chain corrupt at exit. The system may\n"
+                "be unstable until reboot. Please report this with the\n"
+                "active driver name and the file that was last played.\n");
+    }
 
     return 0;
 }
