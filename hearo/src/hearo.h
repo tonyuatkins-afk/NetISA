@@ -89,6 +89,7 @@ typedef struct {
 #define AUD_PAS16       0x00100000UL
 #define AUD_ESS         0x00200000UL
 #define AUD_TBEACH      0x00400000UL
+#define AUD_OPTI_MAD16  0x00800000UL    /* OPTi 82C928 / 82C929 MAD16 family */
 
 typedef enum { OPL_NONE=0, OPL_OPL2, OPL_OPL3, OPL_CQM } opl_type_t;
 
@@ -111,7 +112,7 @@ typedef struct {
     vesa_info_t vesa; video_tier_t vid_tier;
     u32 aud_devices; opl_type_t opl; sb_config_t sb; gus_config_t gus;
     u16 mpu_base; midi_synth_t midi_synth; char midi_name[32];
-    char aud_cards[4][48]; u8 aud_card_count;  /* human-readable card names */
+    char aud_cards[8][48]; u8 aud_card_count;  /* human-readable card names */
     netisa_status_t nisa_status; u16 nisa_base; char nisa_fw[16];
     hbool has_mouse, has_joystick;
     u32 fingerprint; char detect_date[11];

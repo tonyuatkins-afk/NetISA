@@ -63,7 +63,7 @@ static void add_card(hw_profile_t *hw, const char *fmt, ...)
 {
     char buf[64];
     va_list ap;
-    if (hw->aud_card_count >= 4) return;
+    if (hw->aud_card_count >= 8) return;
     va_start(ap, fmt);
     vsprintf(buf, fmt, ap);
     va_end(ap);
@@ -83,12 +83,16 @@ static void probe_pc_speaker(hw_profile_t *hw)
 /* ---- Tandy / PCjr PSG (port C0h + BIOS signature) ---- */
 static void probe_tandy(hw_profile_t *hw)
 {
+    /* BIOS data area F000:FFFE machine-ID byte. Only 0xFD identifies a
+     * PCjr / Tandy 1000 with the SN76489 PSG. 0xFF is the original IBM PC
+     * (1981) which has no PSG; using it as a Tandy signal false-positives
+     * on any clone whose BIOS happens to leave 0xFF there. */
     u8 sig = ad_bios_byte(0xF000FFFEUL);
-    if (sig == 0xFD || sig == 0xFF) {
+    if (sig == 0xFD) {
         /* Confirm with a write to C0h: silence tone 0. */
         ad_outp(0xC0, 0x9F);
         hw->aud_devices |= AUD_TANDY;
-        add_card(hw, "Tandy / PCjr 3-voice PSG");
+        add_card(hw, "Tandy / PCjr 3-voice PSG (SN76489)");
     }
 }
 
@@ -130,6 +134,7 @@ static hbool disney_fifo(u16 base)
 
 static void probe_lpt_audio(hw_profile_t *hw)
 {
+    char *covox_env = getenv("COVOX");
     u16 lpt = ad_bios_lpt(0);
     if (lpt == 0) return;
     if (disney_fifo(lpt)) {
@@ -137,7 +142,11 @@ static void probe_lpt_audio(hw_profile_t *hw)
         add_card(hw, "Disney Sound Source on LPT1");
         return; /* Disney precludes Covox detection on the same port */
     }
-    if (lpt_loopback(lpt)) {
+    /* Covox loopback false-positives on a floating LPT bus when no printer
+     * (or any pull-down load) is connected: bus capacitance holds the last
+     * written value long enough to "match" on read-back. Require explicit
+     * COVOX env var to opt in; under-detect is safer than mis-detect. */
+    if (covox_env && lpt_loopback(lpt)) {
         hw->aud_devices |= AUD_COVOX;
         add_card(hw, "Covox Speech Thing on LPT1 (probable)");
     }
@@ -182,21 +191,34 @@ static void probe_adlib(hw_profile_t *hw)
     }
 }
 
-/* AdLib Gold lives at the OPL3 mirror plus CT1703 mixer at 38Ch+. */
+/* AdLib Gold lives at the OPL3 mirror plus CT1703 mixer at 38Ch+.
+ *
+ * The naive "read 38D, if not 0xFF declare present" probe false-positives
+ * on chips that mirror OPL3 at 388h and incidentally expose non-FF reads
+ * at 38C/38D (e.g. the Yamaha YMF715 OPL3-SAx on the Toshiba 320CDT).
+ * Two layers of defense:
+ *   1. Require explicit ADLIBGOLD env var to opt in. AdLib Gold is rare;
+ *      missing it is much less harmful than mis-detecting a YMF715.
+ *   2. If opted in, do a write-readback test on a known-writable mixer
+ *      register to confirm a real CT1703 mixer is responding. */
 static void probe_adlib_gold(hw_profile_t *hw)
 {
+    char *env = getenv("ADLIBGOLD");
+    u8 v0, v1;
     if (!(hw->aud_devices & AUD_ADLIB)) return;
     if (hw->opl != OPL_OPL3) return;
-    /* Probe the AdLib Gold mixer ID register. */
-    {
-        u8 prev = ad_inp(0x38C);
-        ad_outp(0x38C, 0x00);
-        if (ad_inp(0x38D) == 0xFF) {
-            ad_outp(0x38C, prev);
-            return; /* Not AdLib Gold */
-        }
-        ad_outp(0x38C, prev);
-    }
+    if (!env) return;  /* opt-in only; see comment above */
+
+    /* Write 0x55 then 0xAA to mixer index 0 (left volume); a real CT1703
+     * mixer will return both values back. Floating bus or unrelated chips
+     * generally return 0xFF, 0x00, or a stuck value. */
+    ad_outp(0x38C, 0x00);   /* select index 0 */
+    ad_outp(0x38D, 0x55);
+    v0 = ad_inp(0x38D);
+    ad_outp(0x38D, 0xAA);
+    v1 = ad_inp(0x38D);
+    if (v0 != 0x55 || v1 != 0xAA) return;
+
     hw->aud_devices |= AUD_ADLIB_GOLD;
     add_card(hw, "AdLib Gold (OPL3 + 12-bit DAC)");
 }
@@ -318,9 +340,14 @@ static void probe_sb(hw_profile_t *hw)
         u8 maj = 0, min = 0;
         if (!sb_dsp_version(base, &maj, &min)) return;
         hw->sb.base = base;
-        hw->sb.irq  = irq;
-        hw->sb.dma_lo = dlo;
-        hw->sb.dma_hi = dhi;
+        /* Fall back to canonical SB Pro 2 / SB16 defaults if BLASTER didn't
+         * supply IRQ/DMA. Zero values would later cause the driver to hook
+         * INT 08h (the system timer) and DMA channel 0 (memory refresh on
+         * AT-class boxes), which wedges the machine. Standard jumpers are
+         * IRQ 5, DMA 1 (low), DMA 5 (high for SB16). */
+        hw->sb.irq    = irq ? irq : 5;
+        hw->sb.dma_lo = dlo ? dlo : 1;
+        hw->sb.dma_hi = dhi ? dhi : 5;
         hw->sb.dsp_major = maj;
         hw->sb.dsp_minor = min;
         if (mpu) hw->mpu_base = mpu;
@@ -495,21 +522,34 @@ static void probe_midi_identity(hw_profile_t *hw)
     strcpy(hw->midi_name, "General MIDI device");
 }
 
-/* ---- Ensoniq SoundScape ---- */
+/* ---- Ensoniq SoundScape ----
+ * Same passive-port-read false-positive pattern as the original AdLib Gold
+ * probe: reading 0x33F and declaring "present if not 0xFF/0x00" matches any
+ * chip that has weakly-driven or pulled-up address decoding at 0x33F. The
+ * Toshiba 320CDT YMF715 demonstrated the failure mode for AdLib Gold; the
+ * same risk applies here. Require explicit ENSONIQ env var to opt in. */
 static void probe_ensoniq(hw_profile_t *hw)
 {
-    /* OTTO chip ID lives at 330h..33Fh in the standard config. */
-    u8 v = ad_inp(0x33F);
+    char *env = getenv("ENSONIQ");
+    u8 v;
+    if (!env) return;
+    v = ad_inp(0x33F);
     if (v == 0xFF || v == 0x00) return;
     hw->aud_devices |= AUD_ENSONIQ;
     add_card(hw, "Ensoniq SoundScape (OTTO)");
 }
 
-/* ---- PAS-16 ---- */
+/* ---- PAS-16 ----
+ * Reading 0x9A01 and pattern-matching the high nibble == 0x5 false-positives
+ * on any chip whose decoder happens to put 0x5x at that port. PAS-16 was
+ * relatively rare; better to require an explicit PAS env var than to mis-
+ * detect on a non-PAS system. */
 static void probe_pas16(hw_profile_t *hw)
 {
-    /* PAS magic: write to mixer index, read back. */
-    u8 v = ad_inp(0x9A01);
+    char *env = getenv("PAS");
+    u8 v;
+    if (!env) return;
+    v = ad_inp(0x9A01);
     if ((v & 0xF0) == 0x50) {
         hw->aud_devices |= AUD_PAS16;
         add_card(hw, "Pro Audio Spectrum 16");
@@ -541,20 +581,41 @@ static void probe_ess(hw_profile_t *hw)
     }
 }
 
-/* ---- Turtle Beach MultiSound ---- */
+/* ---- OPTi 82C928 / 82C929 (MAD16 family) ----
+ * Per Hannu Savolainen's MAD16 driver and Jan Knipperts' 82C929 port:
+ * write password 0xE3 to port 0xF8F, read MC1 (0xF8D) twice.  The gate
+ * auto-closes after the first I/O, so the second read returns a different
+ * value when the chip is present.  0xFF on the first read means bus float
+ * (no chip).  Same fingerprint catches the 82C928 predecessor. */
+static void probe_opti_mad16(hw_profile_t *hw)
+{
+    u8 first, second;
+    ad_outp(0xF8F, 0xE3);
+    first = ad_inp(0xF8D);
+    if (first == 0xFF) return;             /* bus float, no chip */
+    second = ad_inp(0xF8D);
+    if (first == second) return;            /* gate did not close, not OPTi */
+    hw->aud_devices |= AUD_OPTI_MAD16;
+    add_card(hw, "OPTi 82C929 (MAD16 Pro)");
+}
+
+/* ---- Turtle Beach MultiSound ----
+ * Most aggressive false-positive risk in the probe set: scans 4 candidate
+ * bases, declares present if any returns non-FF/non-00 from a status read.
+ * This will trigger on virtually any system that has a chip at one of those
+ * bases. Require explicit TBEACH env var with the actual base. */
 static void probe_turtle(hw_profile_t *hw)
 {
-    /* Probe the DSP host port at common bases. */
-    u16 candidates[] = { 0x250, 0x260, 0x290, 0x320, 0 };
-    u16 i;
-    for (i = 0; candidates[i]; i++) {
-        u8 v = ad_inp(candidates[i] + 4);
-        if (v != 0xFF && v != 0x00) {
-            hw->aud_devices |= AUD_TBEACH;
-            add_card(hw, "Turtle Beach MultiSound at %03Xh", candidates[i]);
-            return;
-        }
-    }
+    char *env = getenv("TBEACH");
+    u16 base = 0;
+    u8  v;
+    if (!env) return;
+    base = (u16)strtol(env, 0, 16);
+    if (base == 0) return;
+    v = ad_inp(base + 4);
+    if (v == 0xFF || v == 0x00) return;
+    hw->aud_devices |= AUD_TBEACH;
+    add_card(hw, "Turtle Beach MultiSound at %03Xh", base);
 }
 
 void audio_detect(hw_profile_t *hw)
@@ -578,5 +639,6 @@ void audio_detect(hw_profile_t *hw)
     probe_ensoniq(hw);
     probe_pas16(hw);
     probe_ess(hw);
+    probe_opti_mad16(hw);
     probe_turtle(hw);
 }
