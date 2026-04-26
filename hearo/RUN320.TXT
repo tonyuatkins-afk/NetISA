@@ -1,0 +1,147 @@
+Running HEARO on the Toshiba 320CDT
+====================================
+
+Quick answer
+------------
+
+YES, you can run HEARO from a DOS prompt inside Windows 98 SE. The
+Yamaha YMF715 OPL3-SAx that the 320CDT ships with provides Sound
+Blaster Pro 2 + OPL3 + MPU-401 emulation through a Windows VxD, and
+the Win98 DOS box passes those through to DOS programs faithfully.
+
+For ROUTINE testing this is the fastest path. For the most accurate
+audio results (no Windows IRQ virtualisation, no scheduler latency,
+true real-mode timing), use "Restart in MS-DOS mode" instead.
+
+Path 1: Windows 98 DOS prompt (recommended for first try)
+---------------------------------------------------------
+
+  1. Plug in the flash drive (probably D: on the 320CDT)
+  2. Start menu -> Programs -> MS-DOS Prompt
+  3. D:
+  4. CD HEARO
+  5. SMOKETST              ; runs the synthetic test fixtures
+  6. DEMOTEST              ; runs real-world music files
+
+If you hear audio for each test, you're done. If audio sounds wrong
+or HEARO crashes, fall through to Path 2.
+
+Path 2: Restart in MS-DOS mode
+------------------------------
+
+  1. Start menu -> Shut Down -> "Restart the computer in MS-DOS mode"
+     (or hold F8 at boot, choose "Command prompt only")
+  2. The 320CDT's autoexec.bat / config.sys typically already loads
+     HIMEM, EMM386, and sets BLASTER.  If you see a DOS prompt and
+     SET shows BLASTER=A220 I5 D1 H5 P330 T6 (or similar), you are
+     ready.  If not, type:
+        SET BLASTER=A220 I5 D1 H5 P330 T6
+  3. D:
+  4. CD HEARO
+  5. SMOKETST
+  6. DEMOTEST
+
+If your autoexec.bat is missing audio setup
+-------------------------------------------
+
+The Toshiba's factory install typically sets up the OPL3-SAx via a
+small TSR from the Toshiba utility disks (it loads in autoexec.bat
+as something like C:\YMF\YMFSB.EXE or YMFINIT.EXE).  That TSR puts
+the chip into Sound Blaster Pro 2 mode and is what makes audio work
+from MS-DOS mode.
+
+Minimal autoexec.bat additions if needed:
+
+  SET BLASTER=A220 I5 D1 H5 P330 T6
+  SET MIDI=SYNTH:1 MAP:E
+
+Minimal config.sys (most of which is probably already present):
+
+  DEVICE=C:\WINDOWS\HIMEM.SYS
+  DEVICE=C:\WINDOWS\EMM386.EXE NOEMS
+  FILES=30
+  BUFFERS=20
+  STACKS=9,256
+  DOS=HIGH,UMB
+
+You do NOT need a Sound Blaster driver such as CTSB16.SYS for HEARO;
+HEARO talks directly to the SB hardware ports (220h, IRQ 5, etc.) so
+the BLASTER environment variable is the only thing it needs.
+
+SB_SINGLECYCLE diagnostic test (current 320CDT issue)
+-----------------------------------------------------
+
+The YMF715 OPL3-SAx in the 320CDT detects as SB Pro 2 and accepts
+SB DSP commands but its auto-init DMA never actually plays past the
+first half-block (TESTPLAY reports frames=2048 then halts).  This is
+believed to be a chip-state issue: the OPL3-SAx needs its System
+Mode Control register configured before SB-mode PCM works, and that
+configuration is normally done by a Yamaha vendor utility (UNISOUND,
+YMFSB.EXE, OPL3SAX.EXE) at boot, which the 320CDT's MS-DOS-mode
+shortcut does not run.
+
+SB_SINGLECYCLE forces TESTPLAY to use the older SB 1.x command 0x14
+(single-cycle DMA, ISR re-arms each block) instead of auto-init.
+Some clones that detect as SB Pro but have broken auto-init still
+work in single-cycle mode, because each ISR explicitly re-issues
+the play command rather than relying on the chip to keep playing.
+
+To test from MS-DOS mode:
+
+  C:
+  CD HEARO
+  SET SB_SINGLECYCLE=1
+  TESTPLAY /T3 data\TONE.WAV
+
+Expected outcomes:
+
+  A. Plays clean for 3 seconds.  This means the YMF715 supports the
+     SB 1.x single-cycle path even though auto-init is broken.  We
+     keep SB_SINGLECYCLE as a permanent "SB clone fallback" env var,
+     document the recommendation in DOSMODE.TXT, move on to other
+     work.
+
+  B. Same "frames=2048 then halt" failure.  Software cannot reach
+     this chip class.  Stop iterating on the SB driver for the
+     YMF715.  Fall back to either: (1) running UNISOUND / YMFSB.EXE
+     before HEARO to put the chip in a working state, or (2) buying
+     a real SB card to test against (see docs/hearo-sb-sourcing.md).
+
+In either case, capture the full TESTPLAY output to a log so we can
+correlate with the source:
+
+  TESTPLAY /T3 data\TONE.WAV > SB1CY.LOG
+
+What HEARO will report (TESTDET) on the 320CDT
+----------------------------------------------
+
+Expected (note: CPU detection currently underreports clock by ~14x on
+Pentium MMX, see Known Issues; the actual 233 MHz machine reports as 17 MHz):
+  CPU:    Pentium MMX @ ~233 MHz (reported as 17 MHz, known bug)
+  FPU:    integrated x87
+  Memory: 640K conv + N MB XMS + N MB EMS
+  Video:  Chips & Technologies CT65555 (or similar, the 320CDT's
+          built-in mobile video) at SVGA tier
+  Audio:  PC Speaker
+          AdLib (OPL3)
+          Sound Blaster Pro 2 (DSP 3.x) at base 220 IRQ 5 DMA 1
+          Roland MPU-401 UART at 330h
+          General MIDI device
+
+If TESTDET does not see Sound Blaster, the OPL3-SAx is not in SB mode
+yet.  Check that the Toshiba init TSR ran (it's usually called
+something like YMF715.EXE or YMFSB.EXE on the Toshiba utility disk).
+
+What to listen for
+------------------
+
+  TONE.WAV     two seconds of a 22050 Hz sine
+  TONE.MOD     ProTracker tone, plays C-2 every few rows
+  TONE.S3M     ScreamTracker 3, single C-5 note
+  TONE.XM      FastTracker II, single C-5 note
+  TONE.MID     four-note arpeggio
+  BAND.MID     multi-channel SMF, exercises voice mixing
+  TONE.VGM     OPL2 chip music, single A4 note
+
+If something plays at the wrong pitch or stutters, capture the
+TESTPLAY output to a .LOG so we can correlate with the source.
