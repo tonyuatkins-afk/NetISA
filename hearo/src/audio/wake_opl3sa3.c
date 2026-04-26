@@ -192,11 +192,16 @@ static hbool opl3sa3_wake(const hw_profile_t *hw)
      * stay unrouted because we use the SB-compatible engine, not WSS.
      * Pin->channel binding is via PnP register 74h. */
     osa_write(g_base, OSA_REG_DMA_ROUTE, 0x04);
-    /* MISC 0x83: VEN bit (D7) | YMF715B variant code (D2:D0 = 011b = 3
-     * per the Linux ALSA driver's chip-ID table). The variant code is
-     * informational; downstream HEARO code does not currently
-     * fingerprint variants. */
-    osa_write(g_base, OSA_REG_MISC,      0x83);
+    /* MISC: set the VEN bit (D7) and preserve the chip's self-reported
+     * variant code in D2:D0. g_variant was captured from the MISC read
+     * during probe (it was the original low-3-bits value before any
+     * toggle test). Writing 0x80 | g_variant matches what Linux's
+     * sound/isa/opl3sa2.c does (write 0x80 | chip->version) and avoids
+     * misrepresenting the chip's identity to any downstream code that
+     * fingerprints by reading MISC. The Toshiba 320CDT (primary target)
+     * may report variant 5 (Toshiba Libretto SA3); forcing variant 3
+     * here would have desynced its self-report. */
+    osa_write(g_base, OSA_REG_MISC,      (u8)(0x80 | g_variant));
     /* Master L/R 0x00: bit 7 (mute) clear AND attenuation bits 3:0 = 0
      * (0 dB). Datasheet reset default is 0x07 (-14 dB unmuted) but the
      * SB driver expects 0 dB on init so the mixer's master_volume is
