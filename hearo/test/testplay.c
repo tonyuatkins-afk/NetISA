@@ -16,6 +16,7 @@
 #include "../src/audio/mixer.h"
 #include "../src/audio/wake.h"
 #include "../src/decode/decode.h"
+#include "../src/decode/midi.h"
 #include "../src/platform/dos.h"
 #include "../src/platform/timer.h"
 
@@ -291,6 +292,25 @@ int main(int argc, char *argv[])
         }
     }
     printf("Done. frames=%lu\n", (unsigned long)frames_rendered);
+
+    /* MIDI diagnostic dump. Helps isolate midifm dispatch silence: if these
+     * counters are all zero, midi_advance never reached process_track_events
+     * (timing/clock issue); if dispatch fires but note_on does not, the MIDI
+     * stream contains only meta/sysex; if note_on fires but no audio is heard,
+     * the OPL register write path or mixer/FM unmute is the suspect. */
+    if (song->format == DECODE_MIDI) {
+        u32 disp = 0, on = 0, off = 0;
+        u32 adv = 0, tf = 0, tp = 0, step = 0, ct = 0;
+        u8  nt = 0;
+        midi_get_diag(&disp, &on, &off);
+        midi_get_diag_ext(&adv, &tf, &tp, &step, &ct, &nt);
+        printf("midi diag: dispatch=%lu note_on=%lu note_off=%lu\n",
+               (unsigned long)disp, (unsigned long)on, (unsigned long)off);
+        printf("midi diag: adv_calls=%lu total_frames=%lu ticks=%lu\n",
+               (unsigned long)adv, (unsigned long)tf, (unsigned long)tp);
+        printf("midi diag: step_q16=%lu current_tick=%lu num_tracks=%u\n",
+               (unsigned long)step, (unsigned long)ct, (unsigned)nt);
+    }
 
     drv->close();
     decode_free(song);

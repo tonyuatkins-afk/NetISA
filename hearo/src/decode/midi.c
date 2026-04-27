@@ -147,6 +147,38 @@ void midi_play_init(midi_song_t *song, u32 mixer_rate)
     midifm_silence();
 }
 
+/* Diagnostic counters for tracing the MIDI dispatch path when playback is
+ * silent. These are foreground-only (deferred-mixing means dispatch_event
+ * runs in foreground via sb_pump -> play_callback -> decode_advance) so a
+ * plain u32 is fine; no volatile / cli needed. midi_get_diag exposes them
+ * to testplay so the smoke harness can confirm whether events are firing. */
+static u32 midi_diag_dispatch_count;
+static u32 midi_diag_note_on_count;
+static u32 midi_diag_note_off_count;
+static u32 midi_diag_advance_count;
+static u32 midi_diag_total_frames;
+static u32 midi_diag_ticks_processed;
+static const midi_song_t *midi_diag_song;  /* last song advanced */
+
+void midi_get_diag(u32 *dispatch, u32 *note_on, u32 *note_off)
+{
+    if (dispatch) *dispatch = midi_diag_dispatch_count;
+    if (note_on)  *note_on  = midi_diag_note_on_count;
+    if (note_off) *note_off = midi_diag_note_off_count;
+}
+
+void midi_get_diag_ext(u32 *advance_calls, u32 *total_frames,
+                       u32 *ticks_processed, u32 *step_q16, u32 *current_tick,
+                       u8 *num_tracks)
+{
+    if (advance_calls)   *advance_calls   = midi_diag_advance_count;
+    if (total_frames)    *total_frames    = midi_diag_total_frames;
+    if (ticks_processed) *ticks_processed = midi_diag_ticks_processed;
+    if (step_q16)        *step_q16        = midi_diag_song ? midi_diag_song->samples_per_tick_q16 : 0;
+    if (current_tick)    *current_tick    = midi_diag_song ? midi_diag_song->current_tick : 0;
+    if (num_tracks)      *num_tracks      = midi_diag_song ? midi_diag_song->num_tracks : 0;
+}
+
 /* Dispatch a complete MIDI event. MVP: always to OPL FM (driven in parallel
  * with whatever PCM driver is producing the timing source).  When MPU-401
  * is the active driver, also tee the message to it so external synths get
@@ -156,9 +188,11 @@ static void dispatch_event(u8 status, u8 d1, u8 d2)
     const audio_driver_t *drv = audiodrv_active();
     u8 ch   = status & 0x0F;
     u8 type = status & 0xF0;
+    midi_diag_dispatch_count++;
     switch (type) {
-    case 0x90: if (d2) midifm_note_on(ch, 0, d1, d2); else midifm_note_off(ch, d1); break;
-    case 0x80: midifm_note_off(ch, d1); break;
+    case 0x90: if (d2) { midi_diag_note_on_count++; midifm_note_on(ch, 0, d1, d2); }
+               else    { midi_diag_note_off_count++; midifm_note_off(ch, d1); } break;
+    case 0x80: midi_diag_note_off_count++; midifm_note_off(ch, d1); break;
     case 0xB0: midifm_control_change(ch, d1, d2); break;
     case 0xC0: midifm_program_change(ch, d1); break;
     default:   break;
@@ -229,17 +263,28 @@ void midi_advance(midi_song_t *song, u16 frames)
     u8 t;
     u32 acc = song->sample_acc_q16;
     u32 step = song->samples_per_tick_q16;
+    midi_diag_advance_count++;
+    midi_diag_total_frames += frames;
+    midi_diag_song = song;
     if (!step) return;
     while (frames) {
         u16 chunk = frames > 64 ? 64 : frames;
         acc += (u32)chunk << 16;
         while (acc >= step) {
             acc -= step;
-            song->current_tick++;
+            /* Process events scheduled for the current tick FIRST, then
+             * advance. The previous order (increment, then process) silently
+             * dropped every event at tick 0 -- including the file's initial
+             * tempo meta and the first note-on -- because midi_play_init
+             * leaves current_tick=0 and tracks[].next_tick at delta_0 (often
+             * also 0). With the increment-first order tick 0 was never
+             * matched. */
             for (t = 0; t < song->num_tracks; t++) {
                 if (!song->tracks[t].ended)
                     process_track_events_at_tick(song, t);
             }
+            song->current_tick++;
+            midi_diag_ticks_processed++;
         }
         frames = (u16)(frames - chunk);
     }
