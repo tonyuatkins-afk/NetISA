@@ -8,6 +8,7 @@
  * tremolo (also partial). Period table is the standard PT 36-period one
  * across three octaves with finetune offsets folded into the increment.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "mod.h"
 #include "../audio/mixer.h"
 #include "../audio/audiodrv.h"

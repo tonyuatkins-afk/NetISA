@@ -2,6 +2,7 @@
  * audio/audiodrv.c - Audio driver registry and active-driver routing.
  * Copyright (c) 2026 Tony Atkins. MIT License.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "audiodrv.h"
 #include <string.h>
 

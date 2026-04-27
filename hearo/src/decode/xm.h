@@ -32,12 +32,17 @@ typedef struct {
     void *data;           /* signed PCM after delta decode */
 } xm_sample_t;
 
+/* XM instruments can have up to 16 samples mapped across MIDI notes via
+ * sample_for_note[]. MVP shipped with one sample per instrument; this
+ * struct holds the full 16-sample table. Loader fills as many as the
+ * file declares (num_samples). Playback selects via sample_for_note[]. */
+#define XM_MAX_INSTR_SAMPLES 16
 typedef struct {
     char name[23];
     u8   num_samples;
     u8   sample_for_note[96];
     u8   volume;          /* fallback when sample's volume is 0 */
-    xm_sample_t sample;   /* MVP: only the first sample */
+    xm_sample_t samples[XM_MAX_INSTR_SAMPLES];
 } xm_instrument_t;
 
 typedef struct {

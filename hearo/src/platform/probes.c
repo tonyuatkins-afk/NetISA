@@ -106,8 +106,44 @@ u32 mem_xms_total_kb(void)
 
 u32 mem_ems_total_kb(void)
 {
-    /* INT 67h AH=42h returns BX = total pages (16 KB each). AH=0 on success. */
-    union REGS r;
+    /* INT 67h AH=42h returns BX = total pages (16 KB each). AH=0 on success.
+     *
+     * IMPORTANT: do NOT call INT 67h blindly. On systems without an EMS
+     * driver, the IVT entry for 0x67 may point at the original BIOS handler
+     * (typically a bare IRET, returning whatever AH the caller set), at a
+     * stale TSR, or at unmapped memory. Calling unmapped memory triggers
+     * an Invalid Opcode trap that takes the program down -- observed on
+     * 86Box hearo-sb16 / FreeDOS 1.4 with no EMM386 loaded.
+     *
+     * The standard detection (Microsoft EMS 4.0 spec, "Detecting EMM
+     * presence", and Ralf Brown's Interrupt List INT 67h) is to read the
+     * INT 67h vector, then check for the 8-byte device-name "EMMXXXX0"
+     * at offset 0x0A in the segment containing the handler. Only if that
+     * matches do we issue the query call. Without this guard the bare
+     * INT 67h either returns garbage or faults. */
+    union REGS  r;
+    struct SREGS s;
+    void (__far *vec)(void);
+    const u8 __far *name;
+    static const char emm_sig[8] = { 'E','M','M','X','X','X','X','0' };
+    u8 i;
+
+    /* INT 21h AH=35h: get interrupt vector. Returns ES:BX = handler. */
+    segread(&s);
+    r.h.ah = 0x35;
+    r.h.al = 0x67;
+    int86x(0x21, &r, &r, &s);
+    vec = (void (__far *)(void))(((u32)s.es << 16) | r.x.bx);
+    if (!vec) return 0;
+    /* Device-name lives at offset 0x0A within the driver header. The header
+     * starts at the SEGMENT of the vector, regardless of the vector offset
+     * itself (drivers register themselves with offset of their dispatch
+     * routine; the header is always at offset 0 of the segment). */
+    name = (const u8 __far *)MK_FP(s.es, 0x000A);
+    for (i = 0; i < 8; i++) {
+        if (name[i] != (u8)emm_sig[i]) return 0;
+    }
+    /* Signature matched: a real EMS driver is present. Safe to call. */
     r.h.ah = 0x42;
     int86(0x67, &r, &r);
     if (r.h.ah != 0) return 0;

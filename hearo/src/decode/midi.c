@@ -8,6 +8,7 @@
  * scheduling clock as samples-per-tick in Q16.16, advanced inside the audio
  * callback so timing follows the mixer rather than any wall clock.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "midi.h"
 #include "midifm.h"
 #include "../audio/audiodrv.h"

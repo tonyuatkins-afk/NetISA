@@ -2,6 +2,7 @@
  * audio/mpu401.c - MPU-401 UART-mode MIDI output driver.
  * Copyright (c) 2026 Tony Atkins. MIT License.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "audiodrv.h"
 #include "mpu401.h"
 #include <conio.h>

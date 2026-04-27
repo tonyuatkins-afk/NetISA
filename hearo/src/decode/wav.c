@@ -5,6 +5,7 @@
  * Supports format tag 1 (PCM) only: 8-bit unsigned and 16-bit signed,
  * mono and stereo, any sample rate the host can program.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "wav.h"
 #include "../platform/io.h"
 #include <malloc.h>

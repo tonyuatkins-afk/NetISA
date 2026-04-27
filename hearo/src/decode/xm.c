@@ -18,6 +18,7 @@
  *     0xD pattern break, 0xF set speed/tempo. Other effects are parsed
  *     and ignored (no harm) so playback continues through unsupported notes.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "xm.h"
 #include "../audio/mixer.h"
 #include "../audio/audiodrv.h"
@@ -103,48 +104,47 @@ static hbool load_instrument(FILE *f, xm_instrument_t *ins)
         if (envelope_bytes >= 96) memcpy(ins->sample_for_note, envelope_block, 96);
         fseek(f, after_ins_hdr, SEEK_SET);
 
-        /* Read all sample headers (each sample_hdr_size bytes), keep only
-         * sample 0. Then read sample data sequentially. */
-        for (i = 0; i < ins->num_samples && i < 16; i++) {
+        /* Read each sample header (sample_hdr_size bytes each, typically 40).
+         * Capture all 16 samples' metadata. */
+        for (i = 0; i < ins->num_samples && i < XM_MAX_INSTR_SAMPLES; i++) {
             u32 actual = sample_hdr_size > 40 ? 40 : sample_hdr_size;
             if (fread(shdr, 1, (u16)actual, f) != (u16)actual) return HFALSE;
             if (sample_hdr_size > actual)
                 fseek(f, (long)(sample_hdr_size - actual), SEEK_CUR);
-            sample_lengths[i] = le32(shdr);
-            if (i == 0) {
-                ins->sample.length      = sample_lengths[i];
-                ins->sample.loop_start  = le32(shdr + 4);
-                ins->sample.loop_length = le32(shdr + 8);
-                ins->sample.volume      = shdr[12];
-                ins->sample.finetune    = (s8)shdr[13];
-                ins->sample.type        = shdr[14];
-                ins->sample.panning     = shdr[15];
-                ins->sample.relative_note = (s8)shdr[16];
-                memcpy(ins->sample.name, shdr + 18, 22);
-                ins->sample.name[22] = 0;
-            }
+            sample_lengths[i]               = le32(shdr);
+            ins->samples[i].length          = sample_lengths[i];
+            ins->samples[i].loop_start      = le32(shdr + 4);
+            ins->samples[i].loop_length     = le32(shdr + 8);
+            ins->samples[i].volume          = shdr[12];
+            ins->samples[i].finetune        = (s8)shdr[13];
+            ins->samples[i].type            = shdr[14];
+            ins->samples[i].panning         = shdr[15];
+            ins->samples[i].relative_note   = (s8)shdr[16];
+            memcpy(ins->samples[i].name, shdr + 18, 22);
+            ins->samples[i].name[22] = 0;
         }
-        /* Skip any extra sample headers beyond our 16-sample read cap. */
-        for (i = 16; i < ins->num_samples; i++)
+        /* Skip any extra sample headers beyond our 16-sample cap. */
+        for (i = XM_MAX_INSTR_SAMPLES; i < ins->num_samples; i++)
             fseek(f, (long)sample_hdr_size, SEEK_CUR);
 
-        /* Sample data is delta-encoded; each sample's bytes follow in order. */
+        /* Sample data follows: each sample's bytes in order, delta-encoded. */
         for (i = 0; i < ins->num_samples; i++) {
-            u32 len = (i < 16) ? sample_lengths[i] : 0;
-            if (i == 0 && len) {
-                ins->sample.data = _fmalloc(len);
-                if (!ins->sample.data) return HFALSE;
-                if (!read_chunk(f, ins->sample.data, len)) return HFALSE;
-                if (ins->sample.type & 0x10) {
+            u32 len = (i < XM_MAX_INSTR_SAMPLES) ? sample_lengths[i] : 0;
+            if (i < XM_MAX_INSTR_SAMPLES && len) {
+                xm_sample_t *s = &ins->samples[i];
+                s->data = _fmalloc(len);
+                if (!s->data) return HFALSE;
+                if (!read_chunk(f, s->data, len)) return HFALSE;
+                if (s->type & 0x10) {
                     u32 j;
-                    s16 far *p = (s16 far *)ins->sample.data;
+                    s16 far *p = (s16 far *)s->data;
                     u32 nframes = len / 2;
                     s16 prev = 0;
                     for (j = 0; j < nframes; j++) { prev = (s16)(prev + p[j]); p[j] = prev; }
-                    ins->sample.length = nframes;
+                    s->length = nframes;
                 } else {
                     u32 j;
-                    s8 far *p = (s8 far *)ins->sample.data;
+                    s8 far *p = (s8 far *)s->data;
                     s8 prev = 0;
                     for (j = 0; j < len; j++) { prev = (s8)(prev + p[j]); p[j] = prev; }
                 }
@@ -280,8 +280,11 @@ void xm_free(xm_song_t *song)
         if (song->patterns[i]) _ffree(song->patterns[i]);
     for (i = 0; i < XM_MAX_INSTRUMENTS; i++) {
         if (song->instruments[i]) {
-            if (song->instruments[i]->sample.data)
-                _ffree(song->instruments[i]->sample.data);
+            u16 j;
+            for (j = 0; j < XM_MAX_INSTR_SAMPLES; j++) {
+                if (song->instruments[i]->samples[j].data)
+                    _ffree(song->instruments[i]->samples[j].data);
+            }
             _ffree(song->instruments[i]);
         }
     }
@@ -310,15 +313,19 @@ void xm_play_init(xm_song_t *song, u32 mixer_rate)
     }
     mixer_stop_all();
 
-    /* Upload first-sample-per-instrument to GUS DRAM if present. */
+    /* Upload first-sample-per-instrument to GUS DRAM if present. The GUS
+     * driver expects one sample per instrument slot; multi-sample mapping
+     * is software-mixer only for now. Future: upload all 16 to separate
+     * DRAM slots and have the mixer pick. */
     if (hw && hw->upload_sample) {
         u16 j;
         for (j = 0; j < XM_MAX_INSTRUMENTS; j++) {
             xm_instrument_t *I = song->instruments[j];
-            if (!I || !I->sample.data || !I->sample.length) continue;
-            hw->upload_sample(j, I->sample.data,
-                              I->sample.length * ((I->sample.type & 0x10) ? 2 : 1),
-                              (I->sample.type & 0x10) ? 16 : 8);
+            if (!I) continue;
+            if (!I->samples[0].data || !I->samples[0].length) continue;
+            hw->upload_sample(j, I->samples[0].data,
+                              I->samples[0].length * ((I->samples[0].type & 0x10) ? 2 : 1),
+                              (I->samples[0].type & 0x10) ? 16 : 8);
         }
     }
 }
@@ -352,28 +359,41 @@ static void process_row(xm_song_t *song)
             xm_instrument_t *I = (ins && ins <= XM_MAX_INSTRUMENTS)
                                  ? song->instruments[ins - 1]
                                  : (song->chans[ch].sample_num ? song->instruments[song->chans[ch].sample_num - 1] : 0);
-            if (I && I->sample.data && I->sample.length) {
-                xm_sample_t *s = &I->sample;
-                u8 effective_note = (u8)(note + s->relative_note);
-                u16 period = xm_period_linear(effective_note, s->finetune);
-                u32 freq = xm_freq_linear(period);
-                hbool loop = (s->type & 0x03) != 0;
-                if (hw && hw->trigger_voice && ins) {
-                    hw->trigger_voice(ch, (u16)(ins - 1), freq,
-                                      song->chans[ch].volume * 4,
-                                      song->chans[ch].pan);
-                } else if (s->type & 0x10) {
-                    mixer_set_channel16(ch, (s16 *)s->data, s->length,
-                                        s->loop_start / 2, (s->loop_start + s->loop_length) / 2, loop);
-                    mixer_set_frequency(ch, freq);
-                } else {
-                    mixer_set_channel(ch, (s8 *)s->data, s->length,
-                                      s->loop_start, s->loop_start + s->loop_length, loop);
-                    mixer_set_frequency(ch, freq);
+            if (I) {
+                /* Multi-sample mapping: each MIDI note (1..96) maps to one
+                 * of the instrument's up-to-16 samples via sample_for_note.
+                 * Note in the pattern is 1-based; sample_for_note is
+                 * indexed 0..95 (note - 1). */
+                u8 mapped_note = (note > 0 && note <= 96) ? (u8)(note - 1) : 0;
+                u8 sidx = I->sample_for_note[mapped_note];
+                if (sidx >= XM_MAX_INSTR_SAMPLES) sidx = 0;
+                {
+                    xm_sample_t *s = &I->samples[sidx];
+                    if (s->data && s->length) {
+                        u8 effective_note = (u8)(note + s->relative_note);
+                        u16 period = xm_period_linear(effective_note, s->finetune);
+                        u32 freq = xm_freq_linear(period);
+                        hbool loop = (s->type & 0x03) != 0;
+                        if (hw && hw->trigger_voice && ins) {
+                            hw->trigger_voice(ch, (u16)(ins - 1), freq,
+                                              song->chans[ch].volume * 4,
+                                              song->chans[ch].pan);
+                        } else if (s->type & 0x10) {
+                            mixer_set_channel16(ch, (s16 *)s->data, s->length,
+                                                s->loop_start / 2,
+                                                (s->loop_start + s->loop_length) / 2, loop);
+                            mixer_set_frequency(ch, freq);
+                        } else {
+                            mixer_set_channel(ch, (s8 *)s->data, s->length,
+                                              s->loop_start,
+                                              s->loop_start + s->loop_length, loop);
+                            mixer_set_frequency(ch, freq);
+                        }
+                        if (s->volume && song->chans[ch].volume == 0)
+                            song->chans[ch].volume = s->volume;
+                        song->chans[ch].period = period;
+                    }
                 }
-                if (s->volume && song->chans[ch].volume == 0)
-                    song->chans[ch].volume = s->volume;
-                song->chans[ch].period = period;
             }
         }
         if (note == 97) {

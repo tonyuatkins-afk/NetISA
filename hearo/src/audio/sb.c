@@ -89,6 +89,17 @@ typedef struct {
     u8   sbpro_mixer_0e_saved;/* set after sb_open snapshotted mixer reg 0x0E */
     u8   sbpro_mixer_0e_prev; /* original value of mixer reg 0x0E to restore on close */
     volatile u8 isr_in_progress;/* set at ISR entry past the !running gate, cleared at exit */
+    /* Deferred-work flag, mirroring the pcspeaker driver (see pc_pump). The
+     * SB ISR no longer invokes the mixer callback directly: rendering inside
+     * the IRQ took an unbounded path through decoder + libc that hit DOS
+     * reentrancy hazards (printf/malloc/fopen/time all issue INT 21h, which
+     * corrupts non-reentrant DOS state) and starved the foreground for the
+     * mixer's wall-clock cost on slow targets. The ISR now sets a byte flag
+     * naming the idle half; foreground sb_pump() drains it.
+     *   0 = no refill pending
+     *   1 = half 0 needs refill
+     *   2 = half 1 needs refill */
+    volatile u8 refill_pending;
 } sb_state_t;
 
 static sb_state_t S;
@@ -205,7 +216,6 @@ static u16 irq_vector(u8 irq)        { return (irq < 8) ? (8 + irq) : (0x70 + (i
 static void __interrupt __far sb_isr(void)
 {
     u8 idle;
-    u8 far *halfp;
     audio_callback_t cb;
     u8 mask_bit;
     u16 mask_port;
@@ -252,18 +262,22 @@ static void __interrupt __far sb_isr(void)
         return;
     }
 
-    /* IRQ fires when the DSP finished a block and started the next one. The
-     * half DSP just released is the current S.active_half (stale until we
-     * toggle below); refill THAT half so it has fresh data when the DSP wraps
-     * back around. Toggle active_half AFTER the refill so the field correctly
-     * names the half DSP is currently reading once we IRET. Keeping the use
-     * of active_half before the toggle (rather than the prior toggle-then-XOR
-     * pattern) makes the playhead-vs-refill relationship obvious and removes
-     * the implicit double-XOR that obscured the off-by-one analysis. */
+    /* Deferred refill (Quake snd_dos / SDL3-DOS / pcspeaker pattern). IRQ
+     * fires when the DSP finished a block and started the next one. The
+     * half DSP just released is the current S.active_half: name it as idle
+     * via refill_pending and toggle active_half so the field correctly
+     * names the half DSP is now reading. The foreground sb_pump() drains
+     * refill_pending and runs cb on a foreground stack with full libc
+     * reentrancy. The previous in-ISR cb() was a structural hazard: any
+     * stdio/malloc/fopen on the decoder path issued INT 21h from interrupt
+     * context; DOS is not reentrant, so a foreground mid-INT-21h that got
+     * preempted here corrupted DOS state and silently froze the machine. */
     idle = S.active_half;
-    halfp = (u8 far *)S.buffer + ((u32)idle * S.half_bytes);
-    cb(halfp, S.half_frames, S.format);
+    S.refill_pending = (u8)(idle + 1);
     S.active_half ^= 1;
+    /* cb is snapshotted only to guard the !cb early-out above; the actual
+     * cb invocation has moved to sb_pump() on the foreground stack. */
+    (void)cb;
 
     /* Re-check after callback: a long-running callback could conceivably
      * straddle a teardown on a multitasking shell. */
@@ -307,6 +321,46 @@ static void __interrupt __far sb_isr(void)
      * and refills the next half. */
     outp(mask_port, inp(mask_port) & ~mask_bit);
     S.isr_in_progress = 0;
+}
+
+/* Foreground pump. Mirrors pc_pump's contract; callers (testplay.c main
+ * loop, ui/playback.c top of ui_run iteration) must call this often enough
+ * to refill the idle half before the DSP wraps back to it. At 22050 Hz with
+ * the default 2048-frame half-buffer, that is ~93 ms per half; calling
+ * sb_pump from any UI loop with kbhit polling is more than sufficient.
+ *
+ * The flag read/clear happens under cli so the ISR cannot set the flag
+ * between the read and the clear (which would lose a refill notification);
+ * cb and buffer are also snapshotted in the bracket so a teardown that
+ * lands between sb_close clearing them and pump's later use is benign. */
+void sb_pump(void)
+{
+    u8 pending;
+    audio_callback_t cb;
+    void far *buf;
+    u16 half_bytes;
+    u16 half_frames;
+    u8  format;
+    u8  far *halfp;
+
+    _disable();
+    pending = S.refill_pending;
+    S.refill_pending = 0;
+    cb          = S.cb;
+    buf         = S.buffer;
+    half_bytes  = S.half_bytes;
+    half_frames = S.half_frames;
+    format      = S.format;
+    if (!S.running || !cb || !buf || !pending) {
+        _enable();
+        return;
+    }
+    _enable();
+
+    /* pending encodes (idle_half + 1) so 1 -> half 0, 2 -> half 1. */
+    halfp = (u8 far *)buf + ((u32)(pending - 1) * half_bytes);
+    cb(halfp, half_frames, format);
+    (void)half_bytes;
 }
 
 /* ========================================================================
@@ -533,9 +587,14 @@ static hbool sb_open(u32 rate, u8 format, audio_callback_t cb)
 
     S.buffer = dma_alloc((u32)S.half_bytes * BUF_HALVES, use16, &S.buffer_phys);
     if (!S.buffer) { S.cb = 0; return HFALSE; }
-    /* Pre-fill both halves with silence-relative encoding. */
-    if (use16) memset((u8 far *)S.buffer, 0,    (u32)S.half_bytes * BUF_HALVES);
-    else       memset((u8 far *)S.buffer, 0x80, (u32)S.half_bytes * BUF_HALVES);
+    /* Pre-fill both halves with real mixer output. The ISR no longer renders
+     * (deferred-mixing pattern; see sb_pump), so without a foreground pre-fill
+     * here the DSP would chew through silence-encoded zeros until the first
+     * pump completed -- ~93 ms of dead air at 22050 Hz / 2048 frames per half.
+     * Calling cb twice here primes both halves on the foreground stack with
+     * full libc available (mirrors pc_open's pre-fill in pcspeaker.c). */
+    cb((u8 far *)S.buffer + (u32)0          * S.half_bytes, S.half_frames, format);
+    cb((u8 far *)S.buffer + (u32)1          * S.half_bytes, S.half_frames, format);
 
     install_isr();
 

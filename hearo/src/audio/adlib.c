@@ -10,6 +10,7 @@
  * stream.  The driver still claims to be "playing" so the higher layers
  * have a target to talk to.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "audiodrv.h"
 #include <conio.h>
 
@@ -49,6 +50,15 @@ void adlib_write_b(u8 reg, u8 val)
     delay_short();
     outp(opl_base + 3, val);
     delay_long();
+}
+
+/* Allow callers like midifm to force OPL3 mode on when the AdLib driver
+ * itself is not the active audio driver (e.g., SB16 owns DMA but the OPL3
+ * chip lives on the same card and is reachable at 388/389/38A/38B). Without
+ * this, midifm's bank-B writes for voices 9..17 are silently dropped. */
+void adlib_set_opl3(hbool present)
+{
+    opl3_present = present ? 1 : 0;
 }
 
 static void adlib_silence(void)

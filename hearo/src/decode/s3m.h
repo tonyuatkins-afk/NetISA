@@ -67,16 +67,22 @@ typedef struct {
     u8   num_channels;     /* count of enabled sampled channels */
 
     struct {
-        u16  period;
-        u16  target_period;
+        u16  period;             /* legacy unit, retained for any callers */
+        u16  target_period;      /* legacy: tone-porta target in periods */
+        u32  freq;               /* current playback Hz (effects modify) */
+        u32  target_freq;        /* tone-porta target Hz (effect G) */
+        u32  base_freq;          /* freq from last note trigger (for vibrato) */
         u8   sample_num;
         u8   volume;
         u8   pan;
         u8   effect;
         u8   effect_param;
-        u8   port_speed;
-        u8   vib_pos, vib_speed, vib_depth;
-        u8   last_eff[16]; /* memory for effects */
+        u8   port_speed;         /* memory for E/F slide speed */
+        u8   tone_speed;         /* memory for G tone-porta speed */
+        u8   vib_pos;            /* vibrato sine-table phase 0..63 */
+        u8   vib_speed;          /* vibrato speed (Hxy x*4 added to vib_pos per tick) */
+        u8   vib_depth;          /* vibrato depth (Hxy y, modulates freq) */
+        u8   last_eff[16];       /* per-effect param memory */
     } chans[S3M_MAX_CHANNELS];
 } s3m_song_t;
 

@@ -9,6 +9,7 @@
  * and plays until ESC.  Prints the active driver and the file format on
  * startup so the operator can see what is going on.
  */
+#pragma off (check_stack)  /* play_callback runs from the audio ISR -- see Makefile CF16_ISR */
 #include "../src/hearo.h"
 #include "../src/detect/detect.h"
 #include "../src/audio/audiodrv.h"
@@ -209,6 +210,12 @@ int main(int argc, char *argv[])
         u32   watchdog_start = timer_ticks();
         hbool tried_fallback = HFALSE;
         while (1) {
+            /* Drain any pending half-buffer refill on a foreground stack with
+             * full libc available. Both calls are no-ops when their driver is
+             * not active (single-byte flag check). Pumping every iteration is
+             * cheap and keeps audio gap-free; the ISR no longer renders. */
+            sb_pump();
+            pc_pump();
             if (timeout_sec && frames_rendered >= frame_deadline) break;
             if (frames_rendered != last_frames) {
                 last_frames    = frames_rendered;

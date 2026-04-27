@@ -9,5 +9,6 @@
 
 void adlib_write  (u8 reg, u8 val);   /* OPL2 / OPL3 bank A */
 void adlib_write_b(u8 reg, u8 val);   /* OPL3 bank B (no-op on OPL2) */
+void adlib_set_opl3(hbool present);   /* force the OPL3 flag (bypass driver init) */
 
 #endif

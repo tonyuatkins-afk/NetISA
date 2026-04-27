@@ -23,6 +23,21 @@ ASM    = nasm
 CF16 = -2 -ml -os -wx -zq -zc -i=src
 CF32 = -3r -mf -ox -wx -zq -i=src
 
+# CF16_ISR: same as CF16 but for files reachable from the audio ISR.
+#   -s   disables Watcom's __STK runtime stack-overflow probe. The ISR
+#        runs on the interrupt's stack, which is shallower than the main
+#        program's; __STK's static lower bound trips spuriously and then
+#        re-enters DOS from interrupt context (INT 21h AH=4Ch) which
+#        wedges the machine.
+#   -zu was tried (SS may differ from DS) but in 86Box hearo-sb16 the resulting
+#        binary wedged silently after "Playing for N seconds..." -- TESTPLAY
+#        never advanced past the watchdog loop. Reverted; the audio ISR in
+#        sb.c sets DS=DGROUP on entry so SS==DS at the time mixer_render runs,
+#        making -zu unnecessary and apparently harmful to global-data access.
+# Belt-and-braces: each ISR-reachable file also has #pragma off (check_stack)
+# at the top so the runtime probe stays disabled even if a build rule slips.
+CF16_ISR = -2 -ml -os -wx -zq -zc -s -i=src
+
 SRC_DIR     = src
 OBJ_DIR     = build
 OBJ32_DIR   = build32
@@ -80,6 +95,7 @@ SRCS = &
     $(SRC_DIR)\decode\it.c &
     $(SRC_DIR)\decode\midi.c &
     $(SRC_DIR)\decode\midifm.c &
+    $(SRC_DIR)\decode\genmidi.c &
     $(SRC_DIR)\decode\vgm.c
 
 # LIB_OBJS = everything except hearo.obj (which has main()). Test programs link
@@ -136,6 +152,7 @@ LIB_OBJS = &
     $(OBJ_DIR)\it.obj &
     $(OBJ_DIR)\midi.obj &
     $(OBJ_DIR)\midifm.obj &
+    $(OBJ_DIR)\genmidi.obj &
     $(OBJ_DIR)\vgm.obj
 
 .BEFORE
@@ -177,7 +194,7 @@ $(OBJ_DIR)\spectrum.obj:     $(SRC_DIR)\ui\spectrum.c       ;  $(CC16) $(CF16) $
 $(OBJ_DIR)\settings.obj:     $(SRC_DIR)\ui\settings.c       ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\hallview.obj:     $(SRC_DIR)\ui\hallview.c       ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\ui.obj:           $(SRC_DIR)\ui\ui.c             ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\playback.obj:     $(SRC_DIR)\ui\playback.c       ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\playback.obj:     $(SRC_DIR)\ui\playback.c       ;  $(CC16) $(CF16_ISR) $< -fo=$@
 $(OBJ_DIR)\config.obj:       $(SRC_DIR)\config\config.c     ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\cmdline.obj:      $(SRC_DIR)\config\cmdline.c    ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\cordic.obj:       $(SRC_DIR)\math\cordic.c       ;  $(CC16) $(CF16) $< -fo=$@
@@ -189,26 +206,27 @@ $(OBJ_DIR)\dos.obj:          $(SRC_DIR)\platform\dos.c      ;  $(CC16) $(CF16) $
 $(OBJ_DIR)\timer.obj:        $(SRC_DIR)\platform\timer.c    ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\probes.obj:       $(SRC_DIR)\platform\probes.c   ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\io.obj:           $(SRC_DIR)\platform\io.c       ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\audiodrv.obj:     $(SRC_DIR)\audio\audiodrv.c    ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\dma.obj:          $(SRC_DIR)\audio\dma.c         ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\mixer.obj:        $(SRC_DIR)\audio\mixer.c       ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\audiodrv.obj:     $(SRC_DIR)\audio\audiodrv.c    ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\dma.obj:          $(SRC_DIR)\audio\dma.c         ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\mixer.obj:        $(SRC_DIR)\audio\mixer.c       ;  $(CC16) $(CF16_ISR) $< -fo=$@
 $(OBJ_DIR)\wake.obj:         $(SRC_DIR)\audio\wake.c        ;  $(CC16) $(CF16) $< -fo=$@
 $(OBJ_DIR)\wake_opl3sa3.obj: $(SRC_DIR)\audio\wake_opl3sa3.c ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\sb.obj:           $(SRC_DIR)\audio\sb.c          ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\sb.obj:           $(SRC_DIR)\audio\sb.c          ;  $(CC16) $(CF16_ISR) $< -fo=$@
 $(OBJ_DIR)\gus.obj:          $(SRC_DIR)\audio\gus.c         ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\adlib.obj:        $(SRC_DIR)\audio\adlib.c       ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\mpu401.obj:       $(SRC_DIR)\audio\mpu401.c      ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\pcspeaker.obj:    $(SRC_DIR)\audio\pcspeaker.c   ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\adlib.obj:        $(SRC_DIR)\audio\adlib.c       ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\mpu401.obj:       $(SRC_DIR)\audio\mpu401.c      ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\pcspeaker.obj:    $(SRC_DIR)\audio\pcspeaker.c   ;  $(CC16) $(CF16_ISR) $< -fo=$@
 $(OBJ_DIR)\nulldrv.obj:      $(SRC_DIR)\audio\nulldrv.c     ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\decode.obj:       $(SRC_DIR)\decode\decode.c     ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\wav.obj:          $(SRC_DIR)\decode\wav.c        ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\mod.obj:          $(SRC_DIR)\decode\mod.c        ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\s3m.obj:          $(SRC_DIR)\decode\s3m.c        ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\xm.obj:           $(SRC_DIR)\decode\xm.c         ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\it.obj:           $(SRC_DIR)\decode\it.c         ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\midi.obj:         $(SRC_DIR)\decode\midi.c       ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\midifm.obj:       $(SRC_DIR)\decode\midifm.c     ;  $(CC16) $(CF16) $< -fo=$@
-$(OBJ_DIR)\vgm.obj:          $(SRC_DIR)\decode\vgm.c        ;  $(CC16) $(CF16) $< -fo=$@
+$(OBJ_DIR)\decode.obj:       $(SRC_DIR)\decode\decode.c     ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\wav.obj:          $(SRC_DIR)\decode\wav.c        ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\mod.obj:          $(SRC_DIR)\decode\mod.c        ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\s3m.obj:          $(SRC_DIR)\decode\s3m.c        ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\xm.obj:           $(SRC_DIR)\decode\xm.c         ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\it.obj:           $(SRC_DIR)\decode\it.c         ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\midi.obj:         $(SRC_DIR)\decode\midi.c       ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\midifm.obj:       $(SRC_DIR)\decode\midifm.c     ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\genmidi.obj:      $(SRC_DIR)\decode\genmidi.c    ;  $(CC16) $(CF16_ISR) $< -fo=$@
+$(OBJ_DIR)\vgm.obj:          $(SRC_DIR)\decode\vgm.c        ;  $(CC16) $(CF16_ISR) $< -fo=$@
 
 # Test programs
 tests: TESTDET.EXE TESTBOOT.EXE TESTCORD.EXE TESTQUIR.EXE TESTBIP.EXE TESTUI.EXE TESTPLAY.EXE .SYMBOLIC

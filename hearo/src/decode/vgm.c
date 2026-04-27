@@ -7,6 +7,7 @@
  * were asked to fill.  Register writes are issued immediately to OPL or
  * SN76489 ports; rate conversion only matters for waits.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "vgm.h"
 #include "../audio/adlib.h"
 #include "../platform/io.h"

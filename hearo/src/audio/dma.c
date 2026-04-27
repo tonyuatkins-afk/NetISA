@@ -6,6 +6,7 @@
  * C0h-DFh.  Page registers live in the 8255 PPI scattered area (80h-8Fh).
  * ISA buffers must not cross a 64K boundary for 8-bit, 128K for 16-bit.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "dma.h"
 #include <conio.h>
 #include <dos.h>

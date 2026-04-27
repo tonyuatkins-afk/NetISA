@@ -11,6 +11,7 @@
  * bytes (note, instrument, volume, effect, parameter) with bit flags
  * indicating which fields are present.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "s3m.h"
 #include "../audio/mixer.h"
 #include "../audio/audiodrv.h"
@@ -251,6 +252,32 @@ void s3m_play_init(s3m_song_t *song, u32 mixer_rate)
     }
 }
 
+/* Quarter-period sine table (0..63 -> 0..255). Used by vibrato (effect H)
+ * to perturb playback frequency around the channel's base frequency.
+ * 64-entry resolution matches ProTracker / S3M conventions. */
+static const u8 sine_q[64] = {
+      0,  12,  25,  37,  49,  62,  74,  86,
+     97, 108, 120, 130, 141, 151, 161, 171,
+    180, 189, 197, 205, 212, 219, 225, 231,
+    236, 240, 244, 247, 250, 252, 253, 254,
+    255, 254, 253, 252, 250, 247, 244, 240,
+    236, 231, 225, 219, 212, 205, 197, 189,
+    180, 171, 161, 151, 141, 130, 120, 108,
+     97,  86,  74,  62,  49,  37,  25,  12
+};
+
+/* Apply a per-tick frequency delta in 1/8192 units. Inlined to keep call
+ * depth shallow under the audio ISR (Watcom's __STK probe + large-model
+ * far calls used to push us past 4 KB stack on Phase-3 effect rows). */
+static __inline void apply_freq_delta(u32 *freq, s32 delta_8192ths)
+{
+    s32 adj = (s32)((u32)*freq >> 13) * delta_8192ths;
+    s32 next = (s32)*freq + adj;
+    if (next < 1) next = 1;
+    if (next > 1000000) next = 1000000;
+    *freq = (u32)next;
+}
+
 /* S3M note: a packed byte oct*16 + key. C-5 = 5*16 + 0 = 80. Period for
  * C-5 derives from the sample's c2spd. To avoid re-deriving an Amiga period
  * table, we pre-compute the Hz directly. */
@@ -307,18 +334,28 @@ static void process_row(s3m_song_t *song)
             if (s && s->data && s->length) {
                 u32 freq = s3m_note_freq(note, s->c2spd ? s->c2spd : 8363);
                 hbool loop = (s->flags & 0x01) != 0;
-                if (hw && hw->trigger_voice) {
-                    hw->trigger_voice(ch, (u16)(ins - 1), freq,
-                                      song->chans[ch].volume * 4,
-                                      song->chans[ch].pan);
-                } else if (s->flags & 0x04) {
-                    mixer_set_channel16(ch, (s16 *)s->data, s->length,
-                                        s->loop_start, s->loop_end, loop);
-                    mixer_set_frequency(ch, freq);
+                /* G (tone portamento) does NOT retrigger the sample; it
+                 * only updates the slide target. Other notes retrigger. */
+                if (eff == 7 /* G */ && song->chans[ch].freq) {
+                    song->chans[ch].target_freq = freq;
                 } else {
-                    mixer_set_channel(ch, (s8 *)s->data, s->length,
-                                      s->loop_start, s->loop_end, loop);
-                    mixer_set_frequency(ch, freq);
+                    if (hw && hw->trigger_voice) {
+                        hw->trigger_voice(ch, (u16)(ins - 1), freq,
+                                          song->chans[ch].volume * 4,
+                                          song->chans[ch].pan);
+                    } else if (s->flags & 0x04) {
+                        mixer_set_channel16(ch, (s16 *)s->data, s->length,
+                                            s->loop_start, s->loop_end, loop);
+                        mixer_set_frequency(ch, freq);
+                    } else {
+                        mixer_set_channel(ch, (s8 *)s->data, s->length,
+                                          s->loop_start, s->loop_end, loop);
+                        mixer_set_frequency(ch, freq);
+                    }
+                    song->chans[ch].freq        = freq;
+                    song->chans[ch].base_freq   = freq;
+                    song->chans[ch].target_freq = freq;
+                    song->chans[ch].vib_pos     = 0;
                 }
             }
         }
@@ -330,12 +367,66 @@ static void process_row(s3m_song_t *song)
         case 1:  /* A: set speed */     if (par) song->speed = par; break;
         case 2:  /* B: position jump */ song->current_order = par; song->current_row = 0xFF; break;
         case 3:  /* C: pattern break */ song->current_row = 0xFF; song->current_order++; break;
-        case 4:  /* D: volume slide */  break;        /* per-tick */
-        case 5:  /* E: porta down */    break;
-        case 6:  /* F: porta up */      break;
-        case 7:  /* G: tone porta */    break;
+        case 4: { /* D: volume slide -- handle fine variants on tick 0 */
+            u8 up = par >> 4, dn = par & 0x0F;
+            if (up == 0x0F && dn != 0) {
+                /* D Fx: fine slide DOWN by x once */
+                if (song->chans[ch].volume >= dn) song->chans[ch].volume -= dn;
+                else song->chans[ch].volume = 0;
+            } else if (dn == 0x0F && up != 0) {
+                /* D xF: fine slide UP by x once */
+                if (song->chans[ch].volume + up <= 64) song->chans[ch].volume += up;
+                else song->chans[ch].volume = 64;
+            }
+            /* otherwise per-tick handled in process_tick */
+            break;
+        }
+        case 5: { /* E: porta down -- fine variants on tick 0 */
+            u8 hi = par & 0xF0;
+            u8 lo = par & 0x0F;
+            if (par) song->chans[ch].port_speed = par;
+            else par = song->chans[ch].port_speed;
+            if (hi == 0xF0 && song->chans[ch].freq) {
+                /* EFx: fine porta down once */
+                apply_freq_delta(&song->chans[ch].freq, -(s32)(lo << 2));
+                mixer_set_frequency(ch, song->chans[ch].freq);
+            } else if (hi == 0xE0 && song->chans[ch].freq) {
+                /* EEx: extra-fine porta down once */
+                apply_freq_delta(&song->chans[ch].freq, -(s32)lo);
+                mixer_set_frequency(ch, song->chans[ch].freq);
+            }
+            break;
+        }
+        case 6: { /* F: porta up -- fine variants on tick 0 */
+            u8 hi = par & 0xF0;
+            u8 lo = par & 0x0F;
+            if (par) song->chans[ch].port_speed = par;
+            else par = song->chans[ch].port_speed;
+            if (hi == 0xF0 && song->chans[ch].freq) {
+                apply_freq_delta(&song->chans[ch].freq, (s32)(lo << 2));
+                mixer_set_frequency(ch, song->chans[ch].freq);
+            } else if (hi == 0xE0 && song->chans[ch].freq) {
+                apply_freq_delta(&song->chans[ch].freq, (s32)lo);
+                mixer_set_frequency(ch, song->chans[ch].freq);
+            }
+            break;
+        }
+        case 7:  /* G: tone porta */
+            if (par) song->chans[ch].tone_speed = par;
+            break;
+        case 8: { /* H: vibrato Hxy: x=speed, y=depth */
+            u8 x = par >> 4, y = par & 0x0F;
+            if (x) song->chans[ch].vib_speed = x;
+            if (y) song->chans[ch].vib_depth = y;
+            break;
+        }
         case 19: /* T: set tempo */     if (par) song->tempo = par; break;
-        case 20: /* U: vibrato + slide */ break;
+        case 20: { /* U: vibrato + volume slide -- depth/speed param shape same as H */
+            u8 x = par >> 4, y = par & 0x0F;
+            if (x) song->chans[ch].vib_speed = x;
+            if (y) song->chans[ch].vib_depth = y;
+            break;
+        }
         default: break;
         }
 
@@ -345,6 +436,23 @@ static void process_row(s3m_song_t *song)
     }
 }
 
+static void apply_volume_slide(s3m_song_t *song, u8 ch, u8 par)
+{
+    u8 up = par >> 4, dn = par & 0x0F;
+    /* Skip fine slides (xF / Fx) -- already applied on tick 0. */
+    if (up == 0x0F || dn == 0x0F) return;
+    if (up && song->chans[ch].volume + up <= 64)
+        song->chans[ch].volume += up;
+    else if (up && song->chans[ch].volume + up > 64)
+        song->chans[ch].volume = 64;
+    else if (dn && song->chans[ch].volume >= dn)
+        song->chans[ch].volume -= dn;
+    else if (dn)
+        song->chans[ch].volume = 0;
+    mixer_set_volume(ch, (u8)((u16)song->chans[ch].volume * 4),
+                      song->chans[ch].pan);
+}
+
 static void process_tick(s3m_song_t *song)
 {
     u8 ch;
@@ -352,14 +460,89 @@ static void process_tick(s3m_song_t *song)
         u8 e = song->chans[ch].effect;
         u8 p = song->chans[ch].effect_param;
         switch (e) {
-        case 4: {  /* D: volume slide */
-            u8 up = p >> 4, dn = p & 0x0F;
-            if (up && song->chans[ch].volume + up <= 64)
-                song->chans[ch].volume += up;
-            else if (dn && song->chans[ch].volume >= dn)
-                song->chans[ch].volume -= dn;
-            mixer_set_volume(ch, (u8)((u16)song->chans[ch].volume * 4),
-                              song->chans[ch].pan);
+        case 4:  /* D: volume slide */
+            apply_volume_slide(song, ch, p);
+            break;
+
+        case 5: { /* E: porta down (per-tick variant; fine handled on tick 0) */
+            u8 hi = p & 0xF0;
+            if (hi != 0xF0 && hi != 0xE0 && song->chans[ch].freq) {
+                u8 amt = song->chans[ch].port_speed;
+                apply_freq_delta(&song->chans[ch].freq, -(s32)(amt << 2));
+                mixer_set_frequency(ch, song->chans[ch].freq);
+            }
+            break;
+        }
+        case 6: { /* F: porta up (per-tick variant; fine handled on tick 0) */
+            u8 hi = p & 0xF0;
+            if (hi != 0xF0 && hi != 0xE0 && song->chans[ch].freq) {
+                u8 amt = song->chans[ch].port_speed;
+                apply_freq_delta(&song->chans[ch].freq, (s32)(amt << 2));
+                mixer_set_frequency(ch, song->chans[ch].freq);
+            }
+            break;
+        }
+        case 7: { /* G: tone portamento -- slide freq toward target_freq */
+            u32 cur = song->chans[ch].freq;
+            u32 tgt = song->chans[ch].target_freq;
+            u8  spd = song->chans[ch].tone_speed;
+            if (cur && tgt && spd) {
+                s32 step = (s32)(spd << 2);
+                if (cur < tgt) {
+                    apply_freq_delta(&cur, step);
+                    if (cur > tgt) cur = tgt;
+                } else if (cur > tgt) {
+                    apply_freq_delta(&cur, -step);
+                    if (cur < tgt) cur = tgt;
+                }
+                song->chans[ch].freq = cur;
+                mixer_set_frequency(ch, cur);
+            }
+            break;
+        }
+        case 8: { /* H: vibrato -- modulate freq around base_freq */
+            u8 vp  = song->chans[ch].vib_pos;
+            u8 vsp = song->chans[ch].vib_speed;
+            u8 vd  = song->chans[ch].vib_depth;
+            u32 base = song->chans[ch].base_freq;
+            s32 sample;
+            if (base && vd) {
+                /* sin amplitude scaled to roughly +/- (vd * 0.5%) of base */
+                if (vp < 32) sample =  (s32)sine_q[vp];
+                else         sample = -(s32)sine_q[vp - 32];
+                /* depth 0..15 -> very small percentage swing */
+                {
+                    s32 mod = (s32)(base >> 12) * (s32)vd * sample / 256;
+                    s32 next = (s32)base + mod;
+                    if (next < 1) next = 1;
+                    song->chans[ch].freq = (u32)next;
+                    mixer_set_frequency(ch, song->chans[ch].freq);
+                }
+            }
+            song->chans[ch].vib_pos = (u8)((vp + vsp * 4) & 0x3F);
+            break;
+        }
+        case 20: { /* U: vibrato + volume slide */
+            /* Vibrato leg, identical to H */
+            u8 vp  = song->chans[ch].vib_pos;
+            u8 vsp = song->chans[ch].vib_speed;
+            u8 vd  = song->chans[ch].vib_depth;
+            u32 base = song->chans[ch].base_freq;
+            s32 sample;
+            if (base && vd) {
+                if (vp < 32) sample =  (s32)sine_q[vp];
+                else         sample = -(s32)sine_q[vp - 32];
+                {
+                    s32 mod = (s32)(base >> 12) * (s32)vd * sample / 256;
+                    s32 next = (s32)base + mod;
+                    if (next < 1) next = 1;
+                    song->chans[ch].freq = (u32)next;
+                    mixer_set_frequency(ch, song->chans[ch].freq);
+                }
+            }
+            song->chans[ch].vib_pos = (u8)((vp + vsp * 4) & 0x3F);
+            /* Volume slide leg uses last D parameter (memory) */
+            apply_volume_slide(song, ch, p);
             break;
         }
         default: break;

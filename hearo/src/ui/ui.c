@@ -192,6 +192,7 @@ void ui_run(const hw_profile_t *hw)
          * braces: a heavy redraw can block long enough that one or more
          * refills accumulate. Pattern from the Mpxplay-comparison main-loop
          * recommendation in docs/research/. */
+        sb_pump();
         pc_pump();
 
         if (need_redraw) {
@@ -207,6 +208,7 @@ void ui_run(const hw_profile_t *hw)
             last_spectrum_step_ms = now;
         }
 
+        sb_pump();
         pc_pump();
 
         if (!scr_keypending()) continue;

@@ -2,6 +2,7 @@
  * decode/it.c - Impulse Tracker loader. Phase 3 placeholder.
  * Copyright (c) 2026 Tony Atkins. MIT License.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "it.h"
 #include <stdio.h>
 #include <string.h>

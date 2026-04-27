@@ -2,6 +2,7 @@
  * decode/decode.c - Format dispatcher.
  * Copyright (c) 2026 Tony Atkins. MIT License.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "decode.h"
 #include "../audio/mixer.h"
 #include "../audio/audiodrv.h"
@@ -76,6 +77,15 @@ hbool decode_load(const char *path, decode_handle_t *h)
          * the AdLib driver was registered; if the box only has OPL2 the
          * second-bank writes are no-ops via adlib_write_b. */
         midifm_init(HTRUE);
+        /* Try to load a GENMIDI.OP2 (DMX OPL2 bank). Search a few common
+         * locations: CWD first, then a banks/ subdir, then C:\HEARO\. The
+         * first hit wins. If none are present, midifm falls back to its
+         * built-in 16-patch hand-tuned bank. */
+        if (!midifm_load_bank("GENMIDI.OP2")) {
+            if (!midifm_load_bank("banks\\GENMIDI.OP2")) {
+                (void)midifm_load_bank("C:\\HEARO\\GENMIDI.OP2");
+            }
+        }
         return HTRUE;
     case DECODE_VGM:
         if (!vgm_load(path, &h->u.vgm)) return HFALSE;
@@ -221,5 +231,13 @@ u8 decode_progress(const decode_handle_t *h)
     if (!h) return 0;
     if (h->format == DECODE_MOD && h->u.mod.song_length)
         return (u8)((u16)h->u.mod.current_order * 100 / h->u.mod.song_length);
+    if (h->format == DECODE_VGM && h->u.vgm.file_size) {
+        /* Cursor / file size approximates progress -- VGM byte density is
+         * not perfectly uniform across a track (data blocks vs. dense
+         * register-write runs), but this is good enough for a UI bar. */
+        u32 pos = h->u.vgm.cursor;
+        if (pos > h->u.vgm.file_size) pos = h->u.vgm.file_size;
+        return (u8)((u32)pos * 100UL / h->u.vgm.file_size);
+    }
     return 0;
 }

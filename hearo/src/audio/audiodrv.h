@@ -73,9 +73,22 @@ void                   audiodrv_register_all(void);
  * ms per refill on a 386). Instead the ISR sets a refill_pending flag that
  * the foreground main loop must drain by calling pc_pump regularly. Every
  * ~25 ms is enough at the default 18 kHz / 1024-frame buffer. Safe to call
- * when no PC speaker driver is active (no-op if nothing is pending).
- * Other drivers (sb, gus, mpu401) do not need a pump; their ISRs do not
- * call back into the mixer at all (sb) or render in hardware (gus). */
+ * when no PC speaker driver is active (no-op if nothing is pending). */
 void                   pc_pump(void);
+
+/* Sound Blaster deferred-work pump. Mirrors pc_pump: the SB ISR sets a
+ * byte flag naming the idle half, sb_pump drains it on the foreground
+ * stack. Callers must invoke this regularly from the main loop -- at
+ * 22050 Hz / 2048-frame halves the budget is ~93 ms before the DSP wraps,
+ * so any UI loop that polls kbhit is fine. Safe to call when the active
+ * driver is not SB (no-op). The deferred pattern is required because the
+ * ISR previously called the mixer callback directly, exposing two
+ * structural hazards: (a) the decoder + libc call tree on a foreign ISR
+ * stack, and (b) DOS reentrancy through any stdio/malloc/fopen/time/
+ * assert path the decoder might touch (DOS is not reentrant; INT 21h
+ * called from interrupt context corrupts non-reentrant DOS state). The
+ * canonical references for this design are John Carmack's Quake
+ * snd_dos.c (1996) and SDL3 PR #15377 (April 2026). */
+void                   sb_pump(void);
 
 #endif

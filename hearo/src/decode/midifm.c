@@ -10,10 +10,16 @@
  * MVP coverage: note on/off, program change (per-channel), MIDI volume CC7
  * scales the carrier output level, channel pan via OPL3 stereo bits in C0.
  */
+#pragma off (check_stack)  /* see Makefile CF16_ISR -- belt-and-braces */
 #include "midifm.h"
+#include "genmidi.h"
 #include "../audio/adlib.h"
 #include <conio.h>
 #include <string.h>
+
+/* Direct port I/O for the SB16 mixer unmute below. */
+extern unsigned int  inp(unsigned int port);
+extern unsigned int  outp(unsigned int port, unsigned int val);
 
 #define OPL_CHANNELS_OPL2 9
 #define OPL_CHANNELS_OPL3 18
@@ -67,8 +73,14 @@ static u8         channel_program[16];        /* GM program per MIDI channel */
 static u8         channel_volume [16];        /* CC7 0..127 per MIDI channel */
 static u8         channel_pan    [16];        /* CC10 0..127 per MIDI channel */
 
-static const fm_patch_t *patch_for(u8 midi_channel, u8 program)
+static const fm_patch_t *patch_for(u8 midi_channel, u8 program, u8 note)
 {
+    /* If a GENMIDI.OP2 bank was loaded, use its 175 patches. */
+    if (genmidi_loaded()) {
+        const genmidi_patch_t *gp = genmidi_lookup(midi_channel, program, note);
+        if (gp) return (const fm_patch_t *)gp;       /* layouts are identical */
+    }
+    /* Fallback: 16-patch hand-tuned built-in bank, plus single drum patch. */
     if (midi_channel == 9) return &drum_patch;
     return &bank[(program & 0x7F) >> 3];
 }
@@ -117,6 +129,11 @@ void midifm_init(hbool opl3_present)
         channel_volume [i] = 100;      /* CC7 default per GM spec */
         channel_pan    [i] = 64;       /* center */
     }
+    /* Tell the AdLib driver that OPL3 is reachable. Without this, when SB
+     * (not AdLib) is the active driver and a_init has not run, adlib_write_b
+     * short-circuits and our 18-voice mode silently drops half the voices. */
+    adlib_set_opl3(opl3_present);
+
     /* Enable OPL3 mode and waveform select. The AdLib driver only runs
      * a_init when adlib is the *active* driver; with SB as primary, the
      * OPL3 NEW bit (reg 0x105 = 0x01) and the OPL2 waveform-select enable
@@ -129,9 +146,38 @@ void midifm_init(hbool opl3_present)
     } else {
         adlib_write  (0x01, 0x20);
     }
+
+    /* SB16 mixer init: if we ended up on a Sound Blaster Pro/16/AWE the
+     * default mixer state can leave FM channel volume at zero so even
+     * correctly-driven OPL output is silent. Unmute master + FM by writing
+     * the SB mixer regs (port BLASTER+4 index, +5 data) at full level.
+     * On non-SB systems these writes go to ports nothing's listening on
+     * and have no effect. */
+    {
+        u16 mix_idx = 0x224;       /* BLASTER A220 default */
+        u16 mix_dat = 0x225;
+        static const u8 mixer_pairs[] = {
+            0x22, 0xFF,    /* legacy master */
+            0x26, 0xFF,    /* legacy FM */
+            0x30, 0xFF,    /* SB16 master L */
+            0x31, 0xFF,    /* SB16 master R */
+            0x34, 0xFF,    /* SB16 FM L */
+            0x35, 0xFF,    /* SB16 FM R */
+            0x3E, 0xFF     /* output mixer */
+        };
+        u8 j;
+        for (j = 0; j < (u8)sizeof(mixer_pairs); j += 2) {
+            outp(mix_idx, mixer_pairs[j]);
+            (void)inp(mix_idx);
+            outp(mix_dat, mixer_pairs[j + 1]);
+        }
+    }
 }
 
-hbool midifm_load_bank(const char *path) { (void)path; return HTRUE; }
+hbool midifm_load_bank(const char *path)
+{
+    return genmidi_load(path);
+}
 
 static void note_to_fnum(u8 note, u16 *fnum, u8 *block)
 {
@@ -162,7 +208,11 @@ void midifm_note_on(u8 channel, u8 program_unused, u8 note, u8 velocity)
     voices[v].midi_channel = channel;
     voices[v].note         = note;
 
-    p = patch_for(channel, channel_program[channel]);
+    /* GENMIDI.OP2 percussion entries carry a fixed OPL pitch. For melodic
+     * instruments and the fallback bank, the MIDI note drives pitch as usual. */
+    note = genmidi_fixed_note(channel, channel_program[channel], note);
+    voices[v].note = note;
+    p = patch_for(channel, channel_program[channel], note);
     /* OPL3 stereo bits in 0xCx: bit 4 = right, bit 5 = left. Bias by pan. */
     if (channel_pan[channel] < 32)       stereo_bits = 0x20;          /* left */
     else if (channel_pan[channel] > 96)  stereo_bits = 0x10;          /* right */
